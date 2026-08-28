@@ -8,6 +8,14 @@ import { usePathname } from "next/navigation"
 
 import { Empty, EmptyDescription } from "@/components/ui/empty"
 import {
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -74,7 +82,10 @@ export function AppSidebar({
               <SidebarMenu className="group-data-[collapsible=icon]:hidden">
                 {games.map((game) => (
                   <SidebarMenuItem key={game.id}>
-                    <SidebarMenuButton>
+                    <SidebarMenuButton
+                      isActive={pathname === `/games/${game.id}`}
+                      render={<Link href={`/games/${game.id}`} />}
+                    >
                       <span>{game.title}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -83,10 +94,52 @@ export function AppSidebar({
             )}
             <SidebarMenu className="hidden group-data-[collapsible=icon]:flex">
               <SidebarMenuItem>
-                <SidebarMenuButton>
-                  <MessageSquareIcon />
-                  <span>Recents</span>
-                </SidebarMenuButton>
+                <Popover>
+                  <PopoverTrigger
+                    render={
+                      <SidebarMenuButton>
+                        <MessageSquareIcon />
+                        <span>Recents</span>
+                      </SidebarMenuButton>
+                    }
+                  />
+                  <PopoverContent
+                    side="right"
+                    align="start"
+                    className="w-56 gap-1.5 p-1.5"
+                  >
+                    <PopoverHeader className="px-2 pt-1">
+                      <PopoverTitle className="text-xs text-muted-foreground">
+                        Recents
+                      </PopoverTitle>
+                    </PopoverHeader>
+                    {games.length === 0 ? (
+                      <Empty className="border p-2">
+                        <EmptyDescription className="text-xs">
+                          Your games will live here.
+                        </EmptyDescription>
+                      </Empty>
+                    ) : (
+                      <SidebarMenu>
+                        {games.map((game) => (
+                          <SidebarMenuItem key={game.id}>
+                            <PopoverClose
+                              nativeButton={false}
+                              render={
+                                <SidebarMenuButton
+                                  isActive={pathname === `/games/${game.id}`}
+                                  render={<Link href={`/games/${game.id}`} />}
+                                >
+                                  <span>{game.title}</span>
+                                </SidebarMenuButton>
+                              }
+                            />
+                          </SidebarMenuItem>
+                        ))}
+                      </SidebarMenu>
+                    )}
+                  </PopoverContent>
+                </Popover>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
