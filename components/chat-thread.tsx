@@ -1,5 +1,6 @@
 "use client"
 
+import { useChat } from "@ai-sdk/react"
 import Image from "next/image"
 import { useState } from "react"
 
@@ -15,48 +16,13 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
 
-const messages = [
-  {
-    id: "1",
-    role: "user",
-    content: "Make me a top-down racer set on a neon city rooftop circuit.",
-  },
-  {
-    id: "2",
-    role: "assistant",
-    content:
-      "On it. I'll start with a single rooftop loop, arcade-style drifting, and a lap timer. Neon signs and a wet-asphalt reflection for the mood — you'll be able to drive it in about a minute.",
-  },
-  {
-    id: "3",
-    role: "user",
-    content: "Can the car drift more? It feels glued to the road right now.",
-  },
-  {
-    id: "4",
-    role: "assistant",
-    content:
-      "Loosened the rear grip and added a handbrake on space. Hold it through a corner and the back end steps out, then the tires recover once you straighten up. Tire marks stay on the track for a few seconds.",
-  },
-  {
-    id: "5",
-    role: "user",
-    content: "Nice. Add three rival cars and a countdown before the start.",
-  },
-  {
-    id: "6",
-    role: "assistant",
-    content:
-      "Added three rivals that follow the racing line and fight for position, plus a 3-2-1 countdown that locks your controls until the lights go out. Want me to add a second track next?",
-  },
-]
-
 export function ChatThread() {
   const [prompt, setPrompt] = useState("")
+  // The route handler lives at the transport's default endpoint, `/api/chat`.
+  const { messages, sendMessage, status } = useChat()
 
-  // Temporary stand-in until the thread is wired up to the chat API route.
-  function sendMessage(value: string) {
-    console.log(value)
+  function handleSubmit(value: string) {
+    sendMessage({ text: value })
     setPrompt("")
   }
 
@@ -85,7 +51,13 @@ export function ChatThread() {
                         variant={message.role === "user" ? "secondary" : "ghost"}
                         align={message.role === "user" ? "end" : "start"}
                       >
-                        <BubbleContent>{message.content}</BubbleContent>
+                        <BubbleContent>
+                          {message.parts.map((part, index) =>
+                            part.type === "text" ? (
+                              <span key={index}>{part.text}</span>
+                            ) : null,
+                          )}
+                        </BubbleContent>
                       </Bubble>
                     </MessageContent>
                   </Message>
@@ -100,7 +72,8 @@ export function ChatThread() {
         <ChatComposer
           value={prompt}
           onValueChange={setPrompt}
-          onSubmit={sendMessage}
+          onSubmit={handleSubmit}
+          disabled={status !== "ready"}
           placeholder="Ask for a change…"
         />
       </div>
