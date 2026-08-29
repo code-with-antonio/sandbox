@@ -14,12 +14,14 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.45",
     "@base-ui/react": "^1.7.0",
     "@clerk/nextjs": "^7.8.2",
     "@clerk/ui": "^1.30.8",
     "@neon/config": "^1.0.5",
     "@neon/env": "^1.1.5",
     "@shadcn/react": "^0.3.0",
+    "ai": "^7.0.84",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
