@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server"
 import Image from "next/image"
 
-import { ChatComposer } from "@/components/chat-composer"
+import { NewGameComposer } from "@/components/new-game-composer"
 import { Button } from "@/components/ui/button"
 import {
   Empty,
@@ -30,7 +30,7 @@ export default async function Page() {
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent className="max-w-2xl gap-6">
-          <ChatComposer />
+          <NewGameComposer />
           <div className="flex flex-wrap justify-center gap-2">
             {suggestions.map((suggestion) => (
               <Button

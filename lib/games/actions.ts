@@ -12,16 +12,15 @@ const TITLE_MAX_LENGTH = 80
  * organization.
  *
  * Server Actions are reachable by direct POST, so the org is resolved from the
- * session here rather than trusted from the form payload.
+ * session here rather than trusted from the caller.
  */
-export async function createGame(formData: FormData) {
+export async function createGame(prompt: string) {
   const { orgId } = await auth()
 
   if (!orgId) {
     throw new Error("An active organization is required to create a game.")
   }
 
-  const prompt = formData.get("prompt")
   const title = typeof prompt === "string" ? prompt.trim() : ""
 
   if (!title) {
