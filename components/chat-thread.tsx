@@ -1,6 +1,8 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
+import type { ChatSessionPersistedState } from "@trigger.dev/sdk/chat"
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react"
 import type { UIMessage } from "ai"
 import Image from "next/image"
 import { useEffect, useRef, useState } from "react"
@@ -16,21 +18,43 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
+import {
+  mintGameChatAccessToken,
+  startGameChatSession,
+} from "@/lib/games/chat-actions"
+// Type-only: the agent module reaches the server bundle, never the browser.
+import type { gameChat } from "@/trigger/chat"
 
 export function ChatThread({
   gameId,
   initialMessages,
+  initialSession,
 }: {
   gameId: string
   initialMessages: UIMessage[]
+  initialSession?: ChatSessionPersistedState
 }) {
   const [prompt, setPrompt] = useState("")
-  // The route handler lives at the transport's default endpoint, `/api/chat`.
-  // The chat id doubles as the game id the thread is persisted under, and is
-  // sent to the route alongside the messages.
+  // There is no endpoint to point at — the transport talks to the chat agent
+  // directly, and both callbacks are server actions so the browser never holds
+  // an environment secret key. The chat id doubles as the game id the thread is
+  // persisted under.
+  const transport = useTriggerChatTransport<typeof gameChat>({
+    task: "game-chat",
+    accessToken: ({ chatId }) => mintGameChatAccessToken(chatId),
+    startSession: ({ chatId, clientData }) =>
+      startGameChatSession({ chatId, clientData }),
+    // What the last turn persisted: the session token and the stream cursor, so
+    // a fresh tab reconnects without a round-trip to create a session.
+    sessions: initialSession ? { [gameId]: initialSession } : undefined,
+  })
+
   const { messages, sendMessage, status } = useChat({
     id: gameId,
     messages: initialMessages,
+    transport,
+    // Only a game that has already had a turn has a stream to rejoin.
+    resume: Boolean(initialSession),
   })
 
   // A game is created with its opening prompt already stored as the thread's

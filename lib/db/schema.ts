@@ -22,6 +22,12 @@ export const games = pgTable(
       .$type<UIMessage[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    // Trigger.dev chat session state for the thread above, written by the
+    // agent's `onTurnComplete` in the same statement as the messages. The
+    // cursor is what a reloading browser resumes an interrupted turn from, so
+    // it must never be written ahead of the messages it points past.
+    chatAccessToken: text("chat_access_token"),
+    chatLastEventId: text("chat_last_event_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),
