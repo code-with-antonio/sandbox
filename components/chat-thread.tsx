@@ -1,6 +1,7 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
+import type { UIMessage } from "ai"
 import Image from "next/image"
 import { useState } from "react"
 
@@ -16,10 +17,21 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
 
-export function ChatThread() {
+export function ChatThread({
+  gameId,
+  initialMessages,
+}: {
+  gameId: string
+  initialMessages: UIMessage[]
+}) {
   const [prompt, setPrompt] = useState("")
   // The route handler lives at the transport's default endpoint, `/api/chat`.
-  const { messages, sendMessage, status } = useChat()
+  // The chat id doubles as the game id the thread is persisted under, and is
+  // sent to the route alongside the messages.
+  const { messages, sendMessage, status } = useChat({
+    id: gameId,
+    messages: initialMessages,
+  })
 
   function handleSubmit(value: string) {
     sendMessage({ text: value })
