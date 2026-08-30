@@ -1,6 +1,11 @@
 "use client"
 
-import { ArrowUpIcon, ChevronDownIcon, GripIcon } from "lucide-react"
+import {
+  ArrowUpIcon,
+  ChevronDownIcon,
+  GripIcon,
+  SquareIcon,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -22,6 +27,8 @@ export function ChatComposer({
   value,
   onValueChange,
   onSubmit,
+  onStop,
+  streaming = false,
   disabled = false,
   placeholder = "Describe the game you want to build…",
 }: {
@@ -29,11 +36,18 @@ export function ChatComposer({
   onValueChange: (value: string) => void
   /** Receives the trimmed prompt; only called when it is non-empty. */
   onSubmit: (value: string) => void
+  /** Cancels the turn in flight. Required for the button to offer a stop. */
+  onStop?: () => void
+  /** A turn is in flight, so the submit button becomes a stop button. */
+  streaming?: boolean
   disabled?: boolean
   placeholder?: string
 }) {
   const prompt = value.trim()
   const canSubmit = prompt.length > 0 && !disabled
+  // Stop replaces send rather than sitting beside it, so the one button in the
+  // corner always drives the turn: start it, then end it.
+  const canStop = streaming && Boolean(onStop)
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -83,15 +97,27 @@ export function ChatComposer({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* Base UI buttons default to `type="button"`. */}
-          <Button
-            type="submit"
-            size="icon-lg"
-            disabled={!canSubmit}
-            className="ml-auto rounded-full"
-          >
-            <ArrowUpIcon />
-          </Button>
+          {/* Base UI buttons default to `type="button"`, so only send opts in. */}
+          {canStop ? (
+            <Button
+              size="icon-lg"
+              onClick={onStop}
+              aria-label="Stop generating"
+              className="ml-auto rounded-full"
+            >
+              <SquareIcon className="fill-current" />
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="icon-lg"
+              disabled={!canSubmit}
+              aria-label="Send message"
+              className="ml-auto rounded-full"
+            >
+              <ArrowUpIcon />
+            </Button>
+          )}
         </InputGroupAddon>
       </InputGroup>
     </form>

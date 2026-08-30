@@ -5,7 +5,7 @@ import type { ChatSessionPersistedState } from "@trigger.dev/sdk/chat"
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react"
 import type { UIMessage } from "ai"
 import Image from "next/image"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { ChatComposer } from "@/components/chat-composer"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -49,7 +49,12 @@ export function ChatThread({
     sessions: initialSession ? { [gameId]: initialSession } : undefined,
   })
 
-  const { messages, sendMessage, status } = useChat({
+  const {
+    messages,
+    sendMessage,
+    stop: stopStream,
+    status,
+  } = useChat({
     id: gameId,
     messages: initialMessages,
     transport,
@@ -79,6 +84,16 @@ export function ChatThread({
     sendMessage({ text: value })
     setPrompt("")
   }
+
+  // Two halves of one cancel: `stopGeneration` signals the run so the agent
+  // aborts its `streamText` (the run itself stays alive for the next message),
+  // and `stopStream` settles the local status back to ready. `useChat`'s stop
+  // alone never reaches the backend on a resumed stream, which is every stream
+  // this thread rejoins after a refresh.
+  const handleStop = useCallback(() => {
+    void transport.stopGeneration(gameId)
+    stopStream()
+  }, [transport, gameId, stopStream])
 
   return (
     <div className="flex h-svh flex-col">
@@ -127,6 +142,8 @@ export function ChatThread({
           value={prompt}
           onValueChange={setPrompt}
           onSubmit={handleSubmit}
+          onStop={handleStop}
+          streaming={status === "submitted" || status === "streaming"}
           disabled={status !== "ready"}
           placeholder="Ask for a change…"
         />
