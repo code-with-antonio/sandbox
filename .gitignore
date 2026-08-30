@@ -36,3 +36,5 @@ pnpm-debug.log*
 next-env.d.ts
 .clerk/
 .neon
+
+.trigger
