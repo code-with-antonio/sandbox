@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react"
 import type { UIMessage } from "ai"
 import Image from "next/image"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { ChatComposer } from "@/components/chat-composer"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -32,6 +32,24 @@ export function ChatThread({
     id: gameId,
     messages: initialMessages,
   })
+
+  // A game is created with its opening prompt already stored as the thread's
+  // first message, so a new thread arrives with a user turn and no reply. Ask
+  // for that reply once per game: `sendMessage()` with no argument submits the
+  // messages already in the thread instead of appending another one.
+  const submittedGameId = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (submittedGameId.current === gameId) {
+      return
+    }
+
+    submittedGameId.current = gameId
+
+    if (initialMessages.at(-1)?.role === "user") {
+      sendMessage()
+    }
+  }, [gameId, initialMessages, sendMessage])
 
   function handleSubmit(value: string) {
     sendMessage({ text: value })

@@ -2,7 +2,6 @@ import { anthropic } from "@ai-sdk/anthropic"
 import { auth } from "@clerk/nextjs/server"
 import {
   convertToModelMessages,
-  createIdGenerator,
   createUIMessageStreamResponse,
   streamText,
   toUIMessageStream,
@@ -10,13 +9,8 @@ import {
   type UIMessage,
 } from "ai"
 
-import { saveGameMessages } from "@/lib/games/messages"
+import { generateMessageId, saveGameMessages } from "@/lib/games/messages"
 import { getGame } from "@/lib/games/queries"
-
-// Assistant message ids are generated on the client unless the server supplies
-// one, and a client-side id is assigned too late to reach the saved thread.
-// Persisted assistant messages need an id of their own, so generate it here.
-const generateMessageId = createIdGenerator({ prefix: "msg", size: 16 })
 
 /**
  * Streams a chat completion back to `useChat`. A game owns exactly one thread,

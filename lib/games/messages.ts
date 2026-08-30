@@ -1,9 +1,14 @@
 import "server-only"
 
-import type { UIMessage } from "ai"
+import { createIdGenerator, type UIMessage } from "ai"
 import { and, eq } from "drizzle-orm"
 
 import { db, games } from "@/lib/db"
+
+// Ids for messages that are persisted without ever passing through the
+// client: the opening prompt a game is created with, and the assistant
+// replies the chat route streams back.
+export const generateMessageId = createIdGenerator({ prefix: "msg", size: 16 })
 
 /**
  * Replaces a game's chat thread with `messages`.
