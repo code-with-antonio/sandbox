@@ -2,6 +2,7 @@ import { anthropic } from "@ai-sdk/anthropic"
 import { chat, upsertIncomingMessage } from "@trigger.dev/sdk/ai"
 import { streamText } from "ai"
 
+import { createGameSandbox } from "@/lib/daytona/utils"
 import {
   loadGameMessages,
   saveGameMessages,
@@ -31,6 +32,11 @@ export const gameChat = chat.agent({
     }
 
     return stored
+  },
+  // Fires once per game, on the first message of its thread — so the sandbox
+  // is created exactly once and is already seeded before `run` streams a reply.
+  onChatStart: async ({ chatId }) => {
+    await createGameSandbox(chatId)
   },
   onTurnComplete: async ({
     chatId,

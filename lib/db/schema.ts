@@ -28,6 +28,9 @@ export const games = pgTable(
     // it must never be written ahead of the messages it points past.
     chatAccessToken: text("chat_access_token"),
     chatLastEventId: text("chat_last_event_id"),
+    // The Daytona sandbox the game is built in, created on the thread's first
+    // turn. Null until then, and for games created before sandboxes existed.
+    sandboxId: text("sandbox_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`now()`),
