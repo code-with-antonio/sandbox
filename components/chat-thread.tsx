@@ -34,10 +34,12 @@ export function ChatThread({
   gameId,
   initialMessages,
   initialSession,
+  onTurnComplete,
 }: {
   gameId: string
   initialMessages: UIMessage[]
   initialSession?: ChatSessionPersistedState
+  onTurnComplete: () => void
 }) {
   const [prompt, setPrompt] = useState("")
   // There is no endpoint to point at — the transport talks to the chat agent
@@ -65,6 +67,14 @@ export function ChatThread({
     transport,
     // Only a game that has already had a turn has a stream to rejoin.
     resume: Boolean(initialSession),
+    // The end of the agent's stream is the end of its turn, so this is where
+    // the browser learns that `onTurnComplete` has run on the other side and
+    // the sandbox now holds the build the turn produced.
+    //
+    // Called however the turn ended. A turn stopped halfway, or one that died
+    // on an error, still leaves every file it wrote on disk — that is what the
+    // player is running now, so it is what the preview should show.
+    onFinish: onTurnComplete,
   })
 
   // A game is created with its opening prompt already stored as the thread's
