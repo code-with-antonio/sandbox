@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server"
 import { notFound } from "next/navigation"
 
-import { ChatThread } from "@/components/chat-thread"
+import { GameChat } from "@/components/game-chat"
 import { getGame } from "@/lib/games/queries"
 
 export default async function GamePage({ params }: PageProps<"/games/[id]">) {
@@ -15,7 +15,7 @@ export default async function GamePage({ params }: PageProps<"/games/[id]">) {
   }
 
   return (
-    <ChatThread
+    <GameChat
       gameId={game.id}
       initialMessages={game.messages}
       // The chat session the last turn persisted. Absent until a game has had

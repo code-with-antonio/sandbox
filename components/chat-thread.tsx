@@ -96,7 +96,7 @@ export function ChatThread({
   }, [transport, gameId, stopStream])
 
   return (
-    <div className="flex h-svh flex-col">
+    <div className="flex h-full flex-col">
       <MessageScrollerProvider>
         <MessageScroller className="flex-1">
           <MessageScrollerViewport>
