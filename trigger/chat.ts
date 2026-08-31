@@ -8,6 +8,7 @@ import {
   saveGameMessages,
   saveGameTurn,
 } from "@/lib/games/chat-store"
+import { gameInstructions } from "@/lib/games/instructions"
 
 /**
  * A game's chat thread, run as one long-lived task per conversation.
@@ -58,6 +59,10 @@ export const gameChat = chat.agent({
       // all of which silently no-op without it.
       ...chat.toStreamTextOptions(),
       model: anthropic("claude-sonnet-5"),
+      // `instructions`, not the deprecated `system`. Passed here rather than
+      // through `chat.prompt.set()` because the prompt is static — there is no
+      // per-chat or dashboard-versioned part of it to resolve in a hook.
+      instructions: gameInstructions,
       messages,
       // Fires on stop and on cancel. Without it, Stop only updates the UI.
       abortSignal: signal,
