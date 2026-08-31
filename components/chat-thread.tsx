@@ -3,12 +3,15 @@
 import { useChat } from "@ai-sdk/react"
 import type { ChatSessionPersistedState } from "@trigger.dev/sdk/chat"
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react"
-import type { UIMessage } from "ai"
+import { getToolName, isToolUIPart } from "ai"
+import type { DynamicToolUIPart, ToolUIPart, UIMessage } from "ai"
+import { CheckIcon, CircleAlertIcon } from "lucide-react"
 import Image from "next/image"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { ChatComposer } from "@/components/chat-composer"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
+import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
 import { Message, MessageAvatar, MessageContent } from "@/components/ui/message"
 import {
   MessageScroller,
@@ -18,10 +21,12 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
+import { Spinner } from "@/components/ui/spinner"
 import {
   mintGameChatAccessToken,
   startGameChatSession,
 } from "@/lib/games/chat-actions"
+import { cn } from "@/lib/utils"
 // Type-only: the agent module reaches the server bundle, never the browser.
 import type { gameChat } from "@/trigger/chat"
 
@@ -120,12 +125,29 @@ export function ChatThread({
                         variant={message.role === "user" ? "secondary" : "ghost"}
                         align={message.role === "user" ? "end" : "start"}
                       >
-                        <BubbleContent>
-                          {message.parts.map((part, index) =>
-                            part.type === "text" ? (
-                              <span key={index}>{part.text}</span>
-                            ) : null,
-                          )}
+                        {/* A turn arrives as alternating text and tool parts,
+                            one per step, so they stack rather than run together
+                            on one line. */}
+                        <BubbleContent className="flex flex-col items-start gap-2">
+                          {message.parts.map((part, index) => {
+                            if (part.type === "text") {
+                              return <span key={index}>{part.text}</span>
+                            }
+
+                            // Covers both halves of a call: the part starts as
+                            // the tool call and becomes the result in place, so
+                            // one marker tracks it from start to finish.
+                            if (isToolUIPart(part)) {
+                              return (
+                                <ToolCallMarker
+                                  key={part.toolCallId}
+                                  part={part}
+                                />
+                              )
+                            }
+
+                            return null
+                          })}
                         </BubbleContent>
                       </Bubble>
                     </MessageContent>
@@ -150,4 +172,87 @@ export function ChatThread({
       </div>
     </div>
   )
+}
+
+/** One line per tool call: what the agent is doing to the game, and how it went. */
+function ToolCallMarker({ part }: { part: ToolUIPart | DynamicToolUIPart }) {
+  const status = toolCallStatus(part.state)
+  const verbs = TOOL_VERBS[getToolName(part)] ?? FALLBACK_VERBS
+  const target = toolCallTarget(part.input)
+
+  return (
+    <Marker
+      className={cn("w-fit", status === "failed" && "text-destructive")}
+      // The error text can be a paragraph — the line stays one line, and the
+      // detail is a hover away.
+      title={part.state === "output-error" ? part.errorText : undefined}
+    >
+      <MarkerIcon>
+        {status === "active" ? (
+          <Spinner />
+        ) : status === "done" ? (
+          <CheckIcon />
+        ) : (
+          <CircleAlertIcon />
+        )}
+      </MarkerIcon>
+      <MarkerContent>
+        {status === "active" ? verbs.active : verbs.done}
+        {target && <span className="ml-1 text-foreground">{target}</span>}
+        {status === "failed" && " — failed"}
+      </MarkerContent>
+    </Marker>
+  )
+}
+
+/**
+ * The three states worth showing, out of the seven a tool part moves through.
+ *
+ * Everything before an output exists — streaming input, a complete call still
+ * waiting, an approval round-trip — reads the same way to someone watching:
+ * the agent is working on it. A denied call is a call that produced nothing,
+ * so it lands with the errors.
+ */
+function toolCallStatus(
+  state: ToolUIPart["state"] | DynamicToolUIPart["state"]
+): "active" | "done" | "failed" {
+  switch (state) {
+    case "output-available":
+      return "done"
+    case "output-error":
+    case "output-denied":
+      return "failed"
+    default:
+      return "active"
+  }
+}
+
+// Present tense while the call is in flight, past tense once it has landed —
+// a finished call reads wrong as a frozen "Reading".
+const TOOL_VERBS: Record<string, { active: string; done: string }> = {
+  read_file: { active: "Reading", done: "Read" },
+  write_file: { active: "Writing", done: "Wrote" },
+  replace_text: { active: "Editing", done: "Edited" },
+  list_files: { active: "Listing files", done: "Listed files" },
+  delete_file: { active: "Deleting", done: "Deleted" },
+}
+
+const FALLBACK_VERBS = { active: "Working", done: "Ran tool" }
+
+/**
+ * The file a call is about, when it names one.
+ *
+ * The thread is rendered from untyped `UIMessage`s, so the input arrives as
+ * `unknown` — and mid-stream it is a partial object that may not have reached
+ * `path` yet, which is the same "no target to show" case as a tool that takes
+ * none.
+ */
+function toolCallTarget(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null || !("path" in input)) {
+    return undefined
+  }
+
+  const { path } = input as { path?: unknown }
+
+  return typeof path === "string" && path !== "" ? path : undefined
 }
