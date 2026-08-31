@@ -18,6 +18,7 @@ export default async function GamePage({ params }: PageProps<"/games/[id]">) {
     <GameChat
       gameId={game.id}
       initialMessages={game.messages}
+      sandboxId={game.sandboxId}
       // The chat session the last turn persisted. Absent until a game has had
       // one, and the token may already have expired — the transport refreshes
       // it through the mint action on a 401.
