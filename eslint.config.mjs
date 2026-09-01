@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Seed files copied verbatim into each game's sandbox. They are plain
+    // browser html/css/js served as-is, not part of this app's source.
+    "lib/games/runtime/**",
   ]),
 ]);
 

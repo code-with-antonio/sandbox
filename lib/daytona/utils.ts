@@ -6,6 +6,7 @@ import { daytona } from "@/lib/daytona/client"
 // store: this module runs inside the Trigger.dev worker, where the
 // `server-only` marker on the `@/lib/db` entry would throw.
 import { db, games } from "@/lib/db/client"
+import { readRuntimeFiles } from "@/lib/games/seed"
 
 // Where the game's source lives inside the sandbox. `/home/daytona` is the
 // sandbox user's home, so this is the path a dev server would be pointed at.
@@ -16,8 +17,9 @@ export const GAME_DIR = "/home/daytona/game"
 /**
  * Creates the Daytona sandbox a game is built in and records it on the game.
  *
- * The sandbox starts with a placeholder `index.html` so the game has something
- * servable from its very first moment, before the agent has written any code.
+ * The sandbox starts seeded with the files in `@/lib/games/runtime`, one of
+ * which is a placeholder page, so the game has something servable from its
+ * very first moment, before the agent has written any code.
  *
  * The sandbox id is saved last: a row with a `sandboxId` therefore always names
  * a sandbox that exists and is seeded, and a crash in between leaks an unused
@@ -26,10 +28,19 @@ export const GAME_DIR = "/home/daytona/game"
 export async function createGameSandbox(
   gameId: string
 ): Promise<{ sandbox: Sandbox }> {
+  const { folders, files } = await readRuntimeFiles(GAME_DIR)
+
   const sandbox = await daytona.create({ labels: { gameId } })
 
   await sandbox.fs.createFolder(GAME_DIR, "755")
-  await sandbox.fs.uploadFile(Buffer.from("New game"), `${GAME_DIR}/index.html`)
+
+  for (const folder of folders) {
+    await sandbox.fs.createFolder(folder, "755")
+  }
+
+  // One request for the whole tree rather than one per file, so seeding costs
+  // the same round trip whether `runtime/` holds one file or twenty.
+  await sandbox.fs.uploadFiles(files)
 
   await db
     .update(games)
