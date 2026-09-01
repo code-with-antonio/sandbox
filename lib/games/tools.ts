@@ -24,11 +24,81 @@ const MAX_FILE_BYTES = 128_000
 const LIST_DEPTH = 5
 
 /**
- * The file tools the agent edits a game with.
+ * The question the agent puts to the player, answered in the UI.
  *
- * Built per game rather than declared once, because every call has to land in
- * *this* game's sandbox and the model never sees a game id — the id is closed
- * over here instead of being an argument the model could get wrong.
+ * Alone among the tools it has no `execute`. The call ends the turn with its
+ * result still pending, the player answers it in the chat, and the next turn
+ * resumes from their choice — the run suspends while it waits, so they can
+ * take as long as they like. That is also why it needs an `outputSchema`:
+ * with no execute function to infer a result from, the schema is the only
+ * statement of what an answer looks like.
+ *
+ * Static, so it is declared once here rather than built per game like the file
+ * tools — nothing about it depends on which sandbox the answer lands in.
+ */
+const askPlayer = tool({
+  description:
+    "Put one design question to the player and wait for their answer. Use it to settle a part of the game they haven't decided yet — on the opening turn, to work out what the game actually is before writing any of it. One question per call: the turn stops here until they pick, then carries on, so ask the next one after this answer rather than folding several into one.",
+  inputSchema: z.object({
+    // First in the schema so it is generated first: naming the part of the
+    // game up front keeps the options on one axis, so the player picks
+    // between comparable answers rather than between whole games.
+    dimension: z
+      .enum(["loop", "goal", "challenge", "controls", "world", "look", "feel"])
+      .describe(
+        [
+          "The part of the game the question is about. Choose it first, then write a question that stays inside it.",
+          "- loop: the action the player repeats — what they are doing second to second.",
+          "- goal: what they are playing towards — winning, losing, scoring, progressing.",
+          "- challenge: what stands in their way, and how hard it pushes.",
+          "- controls: what they press, and how the game answers.",
+          "- world: setting, theme, and how the space is laid out.",
+          "- look: art direction — style, palette, camera, scale.",
+          "- feel: pace, weight, juice and sound.",
+        ].join("\n")
+      ),
+    question: z
+      .string()
+      .describe(
+        "The question, in one sentence and in the player's terms — what the game would be, not how it would be built."
+      ),
+    options: z
+      .array(
+        z.object({
+          id: z
+            .string()
+            .describe(
+              'A short lowercase identifier for the option, unique within this question, e.g. "twin-stick".'
+            ),
+          label: z
+            .string()
+            .describe("The option in a few words, the way a button reads."),
+          description: z
+            .string()
+            .describe(
+              "One sentence on what picking this would mean for the game."
+            ),
+        })
+      )
+      .min(2)
+      .max(4)
+      .describe(
+        "The answers to choose between. Each one a different game you would be happy to build — no filler option, and nothing that asks them to write the answer themselves."
+      ),
+  }),
+  outputSchema: z.object({
+    optionId: z.string().describe("The id of the option the player picked."),
+    label: z.string().describe("The label of the option the player picked."),
+  }),
+})
+
+/**
+ * The tools the agent builds a game with: the file tools it edits the game
+ * through, and `ask_player` for the questions it puts back to the player.
+ *
+ * Built per game rather than declared once, because every file call has to
+ * land in *this* game's sandbox and the model never sees a game id — the id is
+ * closed over here instead of being an argument the model could get wrong.
  *
  * Tools report expected failures — a missing file, a path outside the game
  * directory, an ambiguous edit — as ordinary results, so the model reads what
@@ -265,10 +335,12 @@ export function createGameTools(gameId: string) {
             : `Deleted ${relative(target)}.`
         }),
     }),
+
+    ask_player: askPlayer,
   }
 }
 
-/** The file tools, as declared on the chat agent. */
+/** The tools, as declared on the chat agent. */
 export type GameTools = ReturnType<typeof createGameTools>
 
 /**

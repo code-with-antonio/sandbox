@@ -3,9 +3,17 @@
 import { useChat } from "@ai-sdk/react"
 import type { ChatSessionPersistedState } from "@trigger.dev/sdk/chat"
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react"
-import { getToolName, isToolUIPart } from "ai"
+import {
+  getToolName,
+  isToolUIPart,
+  lastAssistantMessageIsCompleteWithToolCalls,
+} from "ai"
 import type { DynamicToolUIPart, ToolUIPart, UIMessage } from "ai"
-import { CheckIcon, CircleAlertIcon } from "lucide-react"
+import {
+  CheckIcon,
+  CircleAlertIcon,
+  CircleQuestionMarkIcon,
+} from "lucide-react"
 import Image from "next/image"
 import { useCallback, useEffect, useRef, useState } from "react"
 
@@ -21,6 +29,17 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
+import {
+  Questionnaire,
+  QuestionnaireActions,
+  QuestionnaireChoice,
+  QuestionnaireChoiceDescription,
+  QuestionnaireChoices,
+  QuestionnaireError,
+  QuestionnaireItem,
+  QuestionnaireSubmit,
+  QuestionnaireTitle,
+} from "@/components/ui/questionnaire"
 import { Spinner } from "@/components/ui/spinner"
 import {
   mintGameChatAccessToken,
@@ -29,6 +48,9 @@ import {
 import { cn } from "@/lib/utils"
 // Type-only: the agent module reaches the server bundle, never the browser.
 import type { gameChat } from "@/trigger/chat"
+
+/** The tool the agent asks with, rather than one it edits the game with. */
+const ASK_PLAYER = "ask_player"
 
 export function ChatThread({
   gameId,
@@ -59,12 +81,22 @@ export function ChatThread({
   const {
     messages,
     sendMessage,
+    addToolOutput,
     stop: stopStream,
     status,
   } = useChat({
     id: gameId,
     messages: initialMessages,
     transport,
+    // Answering `ask_player` resolves the tool call the paused turn is sitting
+    // on, and that answer is only useful to the agent if it goes back — this
+    // submits the thread again the moment the last message has no tool call
+    // left waiting, so the player never has to press send to be understood.
+    //
+    // It reads the last *step* only, so an ordinary turn (tool calls, then a
+    // closing message) doesn't retrigger itself: that step has no tool calls
+    // in it at all.
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     // Only a game that has already had a turn has a stream to rejoin.
     resume: Boolean(initialSession),
     // The end of the agent's stream is the end of its turn, so this is where
@@ -110,6 +142,23 @@ export function ChatThread({
     stopStream()
   }, [transport, gameId, stopStream])
 
+  // A question the agent is still waiting on. The turn paused on a tool call
+  // with no result, so the thread can only move once that call is answered:
+  // anything else sent now would ask the model to carry on from a question it
+  // never heard back about. The composer closes until they pick.
+  //
+  // Only the last message is ever in this state, which is also the only
+  // message `addToolOutput` can patch — so it doubles as which card is live.
+  const lastMessage = messages.at(-1)
+  const pendingQuestion = Boolean(
+    lastMessage?.parts.some(
+      (part) =>
+        isToolUIPart(part) &&
+        getToolName(part) === ASK_PLAYER &&
+        part.state === "input-available"
+    )
+  )
+
   return (
     <div className="flex h-full flex-col">
       <MessageScrollerProvider>
@@ -144,6 +193,37 @@ export function ChatThread({
                               return <span key={index}>{part.text}</span>
                             }
 
+                            // The one tool the player answers rather than
+                            // the sandbox: it gets a question card, not a
+                            // line in the log.
+                            if (
+                              isToolUIPart(part) &&
+                              getToolName(part) === ASK_PLAYER
+                            ) {
+                              return (
+                                <AskPlayerCard
+                                  key={part.toolCallId}
+                                  part={part}
+                                  // Answerable only on the last message, the
+                                  // only one `addToolOutput` writes to. An
+                                  // older card is history and renders as such.
+                                  onAnswer={
+                                    message.id === lastMessage?.id
+                                      ? (option) =>
+                                          void addToolOutput({
+                                            tool: ASK_PLAYER,
+                                            toolCallId: part.toolCallId,
+                                            output: {
+                                              optionId: option.id,
+                                              label: option.label,
+                                            },
+                                          })
+                                      : undefined
+                                  }
+                                />
+                              )
+                            }
+
                             // Covers both halves of a call: the part starts as
                             // the tool call and becomes the result in place, so
                             // one marker tracks it from start to finish.
@@ -176,8 +256,10 @@ export function ChatThread({
           onSubmit={handleSubmit}
           onStop={handleStop}
           streaming={status === "submitted" || status === "streaming"}
-          disabled={status !== "ready"}
-          placeholder="Ask for a change…"
+          disabled={status !== "ready" || pendingQuestion}
+          placeholder={
+            pendingQuestion ? "Pick an answer above…" : "Ask for a change…"
+          }
         />
       </div>
     </div>
@@ -245,6 +327,7 @@ const TOOL_VERBS: Record<string, { active: string; done: string }> = {
   replace_text: { active: "Editing", done: "Edited" },
   list_files: { active: "Listing files", done: "Listed files" },
   delete_file: { active: "Deleting", done: "Deleted" },
+  [ASK_PLAYER]: { active: "Asking", done: "Asked" },
 }
 
 const FALLBACK_VERBS = { active: "Working", done: "Ran tool" }
@@ -265,4 +348,214 @@ function toolCallTarget(input: unknown): string | undefined {
   const { path } = input as { path?: unknown }
 
   return typeof path === "string" && path !== "" ? path : undefined
+}
+
+/**
+ * The name the question submits under.
+ *
+ * The primitive is built for a run of questions and reads answers off the form
+ * by item name; a card holds exactly one, so one constant name covers it.
+ */
+const ASK_ITEM = "answer"
+
+/**
+ * The part of the game a question is about, as `dimension` names it.
+ *
+ * Shown above the question, so the choice is framed before it is read: the
+ * options only make sense against each other once you know which part of the
+ * game they are all answers about.
+ */
+const ASK_DIMENSIONS: Record<string, string> = {
+  loop: "the core loop",
+  goal: "the goal",
+  challenge: "the challenge",
+  controls: "the controls",
+  world: "the world",
+  look: "the look",
+  feel: "the feel",
+}
+
+type AskPlayerOption = { id: string; label: string; description?: string }
+
+/**
+ * The agent's question, waiting on an answer from the player.
+ *
+ * The tool has no `execute`, so the turn ends here with the call unresolved
+ * and the run suspended. Answering resolves it locally and — through
+ * `sendAutomaticallyWhen` — sends the thread straight back, which wakes the
+ * run and lets it carry on building from the choice.
+ *
+ * `onAnswer` is what makes the card live. Without it the question is history:
+ * one the turn has already moved past, or one on a message too old to patch.
+ */
+function AskPlayerCard({
+  part,
+  onAnswer,
+}: {
+  part: ToolUIPart | DynamicToolUIPart
+  onAnswer?: (option: AskPlayerOption) => void
+}) {
+  const asked = askPlayerInput(part.input)
+
+  // Nothing to put to anyone until the whole question has arrived — the input
+  // streams in a token at a time, and a call that failed outright never asked
+  // anything. Both read as an ordinary call in the log.
+  if (!asked || part.state === "input-streaming") {
+    return <ToolCallMarker part={part} />
+  }
+
+  if (part.state === "output-error" || part.state === "output-denied") {
+    return <ToolCallMarker part={part} />
+  }
+
+  const dimension = asked.dimension && ASK_DIMENSIONS[asked.dimension]
+  const answered =
+    part.state === "output-available" ? askPlayerAnswer(part.output) : undefined
+
+  return (
+    <div className="flex w-full max-w-md flex-col gap-3">
+      <Marker>
+        <MarkerIcon>
+          <CircleQuestionMarkIcon />
+        </MarkerIcon>
+        <MarkerContent>
+          {dimension ? `A question about ${dimension}` : "A question"}
+        </MarkerContent>
+      </Marker>
+
+      {onAnswer && part.state === "input-available" ? (
+        <Questionnaire
+          shortcuts="letters"
+          onSubmit={(event) => {
+            // The primitive validates first and only calls this once an option
+            // is picked; without this the form would navigate the page.
+            event.preventDefault()
+
+            const picked = new FormData(event.currentTarget).get(ASK_ITEM)
+            const option = asked.options.find(({ id }) => id === picked)
+
+            if (option) {
+              onAnswer(option)
+            }
+          }}
+        >
+          <QuestionnaireItem name={ASK_ITEM} required>
+            <QuestionnaireTitle>{asked.question}</QuestionnaireTitle>
+            <QuestionnaireChoices>
+              {asked.options.map((option) => (
+                <QuestionnaireChoice key={option.id} value={option.id}>
+                  {option.label}
+                  {option.description && (
+                    <QuestionnaireChoiceDescription>
+                      {option.description}
+                    </QuestionnaireChoiceDescription>
+                  )}
+                </QuestionnaireChoice>
+              ))}
+            </QuestionnaireChoices>
+            <QuestionnaireError />
+          </QuestionnaireItem>
+          <QuestionnaireActions>
+            <QuestionnaireSubmit size="sm">Build this</QuestionnaireSubmit>
+          </QuestionnaireActions>
+        </Questionnaire>
+      ) : (
+        // Settled: the options were a way to answer, and once answered they
+        // are noise. What stays is what was asked and what was picked.
+        <div className="flex flex-col gap-2">
+          <p className="font-heading text-base leading-snug font-medium text-pretty">
+            {asked.question}
+          </p>
+          <Marker>
+            <MarkerIcon>
+              {answered ? <CheckIcon /> : <CircleAlertIcon />}
+            </MarkerIcon>
+            <MarkerContent>
+              {answered ? (
+                <span className="text-foreground">{answered}</span>
+              ) : (
+                "Left unanswered"
+              )}
+            </MarkerContent>
+          </Marker>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A question, once the whole of one has arrived.
+ *
+ * Read defensively for the same reason as `toolCallTarget`: the thread renders
+ * untyped `UIMessage`s, so the input is `unknown` here, and mid-stream it is a
+ * partial object that may hold half a question and one option so far. Anything
+ * short of a question with two options to answer it isn't askable yet.
+ */
+function askPlayerInput(input: unknown): {
+  dimension?: string
+  question: string
+  options: AskPlayerOption[]
+} | null {
+  if (typeof input !== "object" || input === null) {
+    return null
+  }
+
+  const { dimension, question, options } = input as {
+    dimension?: unknown
+    question?: unknown
+    options?: unknown
+  }
+
+  if (typeof question !== "string" || question === "") {
+    return null
+  }
+
+  const parsed = (Array.isArray(options) ? options : []).flatMap(
+    (option): AskPlayerOption[] => {
+      if (typeof option !== "object" || option === null) {
+        return []
+      }
+
+      const { id, label, description } = option as {
+        id?: unknown
+        label?: unknown
+        description?: unknown
+      }
+
+      if (typeof id !== "string" || id === "" || typeof label !== "string") {
+        return []
+      }
+
+      return [
+        {
+          id,
+          label,
+          description:
+            typeof description === "string" ? description : undefined,
+        },
+      ]
+    }
+  )
+
+  if (parsed.length < 2) {
+    return null
+  }
+
+  return {
+    dimension: typeof dimension === "string" ? dimension : undefined,
+    question,
+    options: parsed,
+  }
+}
+
+/** The label of the option the player picked, out of the tool's output. */
+function askPlayerAnswer(output: unknown): string | undefined {
+  if (typeof output !== "object" || output === null) {
+    return undefined
+  }
+
+  const { label } = output as { label?: unknown }
+
+  return typeof label === "string" && label !== "" ? label : undefined
 }
