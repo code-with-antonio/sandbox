@@ -2,19 +2,41 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <title>New game</title>
     <link rel="stylesheet" href="./style.css" />
+
+    <!--
+      Bare module specifiers, resolved in the browser.
+
+      There is no bundler and no node_modules here, so "three" would normally be
+      an unresolvable import. This map is what makes it resolve — and it has to
+      stay in this file, because an import map only applies to the document that
+      declares it, and it must appear before the first module that relies on it.
+
+      `three/addons/` covers everything under examples/jsm: OrbitControls,
+      GLTFLoader, EffectComposer and the rest. The engine modules import through
+      both prefixes, so removing this breaks every one of them.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+        }
+      }
+    </script>
   </head>
   <body>
     <!--
-      The holding screen a new sandbox serves until the agent writes a real
-      game over it. It exists so the preview has something to show on the very
-      first load, before the first turn has produced any code.
+      The holding screen a new sandbox serves until the agent writes a real game
+      over it. It exists so the preview has something to show on the very first
+      load, before the first turn has produced any code — and it is built on the
+      same `./engine/` modules a game is, as a worked example of them.
     -->
-    <main class="holding">
-      <h1>New game</h1>
-      <p>Nothing has been built yet — describe the game you want.</p>
-    </main>
+    <script type="module" src="./welcome.js"></script>
   </body>
 </html>

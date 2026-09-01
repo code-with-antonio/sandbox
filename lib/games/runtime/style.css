@@ -1,36 +1,107 @@
-/* Styles for the holding screen in index.html. Kept in its own file so a new
-   sandbox is seeded with the layout the agent is told to grow into — markup,
-   styles and scripts side by side in the game directory. */
+/* The page the game is played in.
+
+   Kept in its own file so a new sandbox is seeded with the layout the agent is
+   told to grow into — markup, styles and scripts side by side in the game
+   directory. The rules here are the ones every 3D game in a browser needs: a
+   canvas that fills the viewport exactly, nothing that scrolls, and a body that
+   HUD overlays can position themselves against. */
 
 :root {
   color-scheme: dark;
+  --ink: #0a0a0a;
+  --snow: #ededed;
+  --mist: #a1a1a1;
+  --ember: #ea580c;
+  --amber: #fb923c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: #0a0a0a;
-  color: #ededed;
+  /* The HUD's children are absolutely positioned against the body, so it has to
+     be a containing block. Without this they escape to the viewport and drift
+     out of place the moment the page has any other layout. */
+  position: relative;
+  /* A canvas sized to the viewport still overflows it by a pixel or two on some
+     browsers, and the resulting scrollbar changes the size, which resizes the
+     canvas, which brings the scrollbar back. */
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--snow);
   font-family:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Helvetica,
+    Arial,
     sans-serif;
+  /* A game is dragged and tapped, not selected — without this every drag
+     highlights the HUD text and every double tap zooms the game away. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  /* No padding here on purpose: the engine sizes the canvas from this element's
+     box, so padding would leave the render buffer a different shape from the
+     area it is stretched over. Notch insets are handled in the HUD instead. */
 }
 
-.holding {
-  padding: 2rem;
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The welcome screen's own text. A game replacing this page can delete it. */
+.welcome {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: clamp(28px, 8vh, 72px);
+  z-index: 10;
+  pointer-events: none;
   text-align: center;
+  padding: 0 24px;
+  animation: welcome-in 900ms 300ms both cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.holding h1 {
+.welcome h1 {
   margin: 0 0 0.5rem;
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 
-.holding p {
+.welcome p {
   margin: 0;
-  color: #a1a1a1;
-  font-size: 0.875rem;
+  color: var(--mist);
+  font-size: clamp(0.8125rem, 2vw, 0.9375rem);
+}
+
+@keyframes welcome-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Someone reading this in a reduced-motion setting still gets the page; the
+   cube's own spin is slowed in welcome.js rather than here. */
+@media (prefers-reduced-motion: reduce) {
+  .welcome {
+    animation: none;
+  }
 }

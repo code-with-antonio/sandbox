@@ -66,7 +66,7 @@ export const gameChat = chat.agent({
       // `prepareStep` behind compaction, steering and background injection —
       // all of which silently no-op without it.
       ...chat.toStreamTextOptions({ tools }),
-      model: anthropic("claude-sonnet-5"),
+      model: anthropic("claude-opus-5"),
       // `instructions`, not the deprecated `system`. Passed here rather than
       // through `chat.prompt.set()` because the prompt is static — there is no
       // per-chat or dashboard-versioned part of it to resolve in a hook.

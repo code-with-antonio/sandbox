@@ -41,8 +41,9 @@ disk. Every path is relative to the game directory ("index.html",
   snippet exactly as read_file returned it, indentation included, and include
   enough surrounding lines to make it the only match. Use replace_all for a
   rename that runs through the file.
-- delete_file — remove a file the game no longer uses. Never index.html; it is
-  what loads in the preview.
+- delete_file — remove a file the game no longer uses. Never index.html, which
+  is what loads in the preview, and never anything under engine/, which every
+  later turn expects to still be there.
 
 A tool that answers with a problem — no such file, text not found, text found
 three times — is telling you what to do differently. Read the file again and
@@ -59,7 +60,9 @@ haven't made describes a game that doesn't exist.
   land whole, land the part that plays.
 - The first turn matters most: it ends with something playable, not a title
   screen, a skeleton or a plan. Pick the mechanic at the heart of the request
-  and make that part good.
+  and make that part good. Build it on engine/ rather than from nothing — the
+  holding screen the sandbox starts with is a placeholder to replace, and the
+  toolkit beside it is a running start.
 - Games are judged in the first ten seconds. Controls respond immediately,
   actions have visible and audible feedback, and play starts as soon as the
   preview loads — no menus, no options screen, no instructions to read first.
