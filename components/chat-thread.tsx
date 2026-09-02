@@ -9,7 +9,12 @@ import {
   isToolUIPart,
   lastAssistantMessageIsCompleteWithToolCalls,
 } from "ai"
-import type { DynamicToolUIPart, ToolUIPart, UIMessage } from "ai"
+import type {
+  DynamicToolUIPart,
+  ToolUIPart,
+  UIMessage,
+  UIMessageChunk,
+} from "ai"
 import {
   CheckIcon,
   CircleAlertIcon,
@@ -101,6 +106,37 @@ export function ChatThread({
     sessions: initialSession ? { [gameId]: initialSession } : undefined,
   })
 
+  // The message a resumed stream might be continuing, read once. Only a thread
+  // that was already sitting on an agent message when the page rendered has
+  // one, and the resume happens on mount, so nothing that arrives later can
+  // change the answer.
+  const [resumedHeadId] = useState(() => {
+    const last = initialMessages.at(-1)
+
+    return last?.role === "assistant" ? last.id : undefined
+  })
+
+  // The transport `useChat` actually talks to: the one above, with the chunk
+  // that would erase the question the player just answered filtered out of a
+  // resumed stream. Everything else passes through untouched, and `handleStop`
+  // below still reaches for the real transport, which is where the session
+  // lives.
+  const chatTransport = useMemo(
+    () => ({
+      sendMessages: transport.sendMessages,
+      reconnectToStream: async (
+        options: Parameters<typeof transport.reconnectToStream>[0]
+      ) => {
+        const stream = await transport.reconnectToStream(options)
+
+        return stream && resumedHeadId
+          ? stream.pipeThrough(withoutContinuationOf(resumedHeadId))
+          : stream
+      },
+    }),
+    [transport, resumedHeadId]
+  )
+
   // Read inside `onError`, which `useChat` holds from the render it was created
   // in — reading `messages` there directly would report the thread as it was
   // when the callback was made rather than when the turn failed.
@@ -116,7 +152,7 @@ export function ChatThread({
   } = useChat({
     id: gameId,
     messages: initialMessages,
-    transport,
+    transport: chatTransport,
     // Answering `ask_player` resolves the tool call the paused turn is sitting
     // on, and that answer is only useful to the agent if it goes back — this
     // submits the thread again the moment the last message has no tool call
@@ -366,6 +402,36 @@ export function ChatThread({
       </div>
     </div>
   )
+}
+
+/**
+ * Takes the chunk that would erase a message out of the stream a reload
+ * resumes.
+ *
+ * Answering an `ask_player` question doesn't open a new agent message: the
+ * agent carries on writing into the one that asked, so the turn it wakes
+ * opens by naming that message's id. A tab that reloads while that turn is
+ * running rejoins the stream part way through — from the cursor the *question*
+ * was saved at — and the AI SDK reads the id as "this is that message", then
+ * swaps the thread's copy for the one it has built out of the stream. That
+ * copy starts empty and only ever holds what arrived after the cursor, so the
+ * question, and the answer under it, are what the swap drops.
+ *
+ * Without the id the AI SDK stays on the one it generated itself, so the rest
+ * of the turn lands beside the question rather than on top of it. One turn
+ * reads as two messages until the next reload takes the merged one back off
+ * the row; nothing is lost either way.
+ */
+function withoutContinuationOf(messageId: string) {
+  return new TransformStream<UIMessageChunk, UIMessageChunk>({
+    transform(chunk, controller) {
+      if (chunk.type === "start" && chunk.messageId === messageId) {
+        return
+      }
+
+      controller.enqueue(chunk)
+    },
+  })
 }
 
 /** One line per tool call: what the agent is doing to the game, and how it went. */
