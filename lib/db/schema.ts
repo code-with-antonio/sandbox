@@ -1,11 +1,13 @@
 import type { UIMessage } from "ai"
 import { sql } from "drizzle-orm"
 import {
+  bigint,
   index,
   jsonb,
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core"
 
@@ -51,3 +53,29 @@ export const games = pgTable(
 
 export type Game = typeof games.$inferSelect
 export type NewGame = typeof games.$inferInsert
+
+export const creditLedger = pgTable(
+  "credit_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Clerk organization id (`auth().orgId`), not a foreign key.
+    orgId: text("org_id").notNull(),
+    // What the row is for, e.g. `step:<responseId>`. Unique per org, so a
+    // retried write of the same entry collides rather than double-counting.
+    entryKey: text("entry_key").notNull(),
+    // Billionths of a dollar. Negative for spend, positive for top-ups.
+    amount: bigint("amount", { mode: "bigint" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    unique("credit_ledger_org_id_entry_key_key").on(
+      table.orgId,
+      table.entryKey
+    ),
+  ]
+)
+
+export type CreditLedgerEntry = typeof creditLedger.$inferSelect
+export type NewCreditLedgerEntry = typeof creditLedger.$inferInsert
