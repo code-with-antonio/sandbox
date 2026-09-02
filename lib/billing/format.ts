@@ -7,7 +7,17 @@
  * side of the server/client boundary.
  */
 
-const BILLIONTHS_PER_CENT = 10_000_000n
+/**
+ * One dollar, in the billionths every amount in this app is counted in.
+ *
+ * It lives here, in the module with no dependencies of its own, because both
+ * halves of the money story need it — the ledger to size a grant, the price
+ * table to quote a rate — and neither should have to import the other to say
+ * what a dollar is.
+ */
+export const DOLLAR = 1_000_000_000n
+
+const BILLIONTHS_PER_CENT = DOLLAR / 100n
 
 const dollars = new Intl.NumberFormat("en-US", {
   style: "currency",

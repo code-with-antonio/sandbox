@@ -2,10 +2,13 @@ import { chat, upsertIncomingMessage } from "@trigger.dev/sdk/ai"
 import { stepCountIs, streamText } from "ai"
 import { z } from "zod"
 
+import { chargeStep } from "@/lib/billing/ledger"
+import { priceStep } from "@/lib/billing/pricing"
 import { createGameSandbox } from "@/lib/daytona/utils"
 import { gameModelSettings } from "@/lib/games/agent"
 import {
   loadGameMessages,
+  loadGameOrgId,
   saveGameMessages,
   saveGameTurn,
 } from "@/lib/games/chat-store"
@@ -150,17 +153,26 @@ export const gameChat = chat.agent({
   // only passed there: history re-converted at the top of a later turn needs
   // the same set to make sense of the tool calls already in it.
   tools: ({ chatId }) => createGameTools(chatId),
-  run: async ({ messages, tools, signal, clientData }) =>
-    streamText({
+  run: async ({ messages, tools, signal, clientData, chatId }) => {
+    // Read per turn rather than fixed for the thread, so switching models
+    // mid-conversation takes effect on the next message and carries the history
+    // with it. Named here rather than inline because the same choice decides
+    // what the turn runs on and what it is billed at.
+    const modelId = clientData?.modelId ?? DEFAULT_GAME_MODEL_ID
+
+    // Resolved once for the turn rather than per step: the owner of a game
+    // cannot change mid-turn, and a lookup inside `onStepEnd` would repeat it
+    // up to `MAX_STEPS` times.
+    const orgId = await loadGameOrgId(chatId)
+
+    return streamText({
       // Spread first, so every option below still wins. Wires up the
       // `prepareStep` behind compaction, steering and background injection —
       // all of which silently no-op without it.
       ...chat.toStreamTextOptions({ tools }),
-      // Read per turn rather than fixed for the thread, so switching models
-      // mid-conversation takes effect on the next message and carries the
-      // history with it. Spread rather than assigned because what varies with
-      // the model is `model` today and may not be only that later.
-      ...gameModelSettings(clientData?.modelId ?? DEFAULT_GAME_MODEL_ID),
+      // Spread rather than assigned because what varies with the model is
+      // `model` today and may not be only that later.
+      ...gameModelSettings(modelId),
       // `instructions`, not the deprecated `system`. Passed here rather than
       // through `chat.prompt.set()` because the prompt is static — there is no
       // per-chat or dashboard-versioned part of it to resolve in a hook.
@@ -169,5 +181,39 @@ export const gameChat = chat.agent({
       // Fires on stop and on cancel. Without it, Stop only updates the UI.
       abortSignal: signal,
       stopWhen: stepCountIs(MAX_STEPS),
-    }),
+      // Per step rather than per turn, so a build that runs for minutes bills
+      // as it goes: the sidebar drops while the game is still being written,
+      // and a turn that crashes or is stopped halfway has still paid for the
+      // steps that ran. `onStepEnd`, not the deprecated `onStepFinish`.
+      onStepEnd: async ({ usage, response }) => {
+        if (!orgId) {
+          return
+        }
+
+        try {
+          await chargeStep({
+            orgId,
+            responseId: response.id,
+            amount: priceStep({ modelId, usage }),
+          })
+        } catch (error) {
+          // Deliberately swallowed. This runs between steps of a turn the
+          // player is watching, and a ledger that is briefly short a row is a
+          // better outcome than a build that dies halfway through writing a
+          // game. The row is not recoverable afterwards, though, so an org
+          // billed less than it used shows up here and nowhere else.
+          logger.error(
+            logger.fmt`Could not charge a step for game ${chatId}`,
+            {
+              "game.id": chatId,
+              "organization.id": orgId,
+              "gen_ai.request.model": modelId,
+              "gen_ai.response.id": response.id,
+              ...describeError(error),
+            }
+          )
+        }
+      },
+    })
+  },
 })

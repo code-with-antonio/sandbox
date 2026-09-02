@@ -13,13 +13,15 @@ export const metadata: Metadata = {
 export default async function BillingPage() {
   await auth.protect({ unauthenticatedUrl: "/sign-in" })
 
+  const { orgId } = await auth()
+
   // This is where someone lands after checkout, so it is where the months an
   // organization has paid for are turned into ledger rows. Reconciling costs a
   // read of the subscription and, all but the first time each month, an insert
   // that conflicts and does nothing.
   await reconcileCredits()
 
-  const credits = await getCreditBalance()
+  const credits = await getCreditBalance(orgId)
 
   return (
     <div className="flex min-h-svh flex-col">

@@ -5,7 +5,7 @@ import type { BillingSubscriptionItem } from "@clerk/backend"
 import * as Sentry from "@sentry/nextjs"
 
 import { creditLedger, db } from "@/lib/db"
-import { DOLLAR } from "@/lib/billing/ledger"
+import { DOLLAR } from "@/lib/billing/format"
 import { describeError } from "@/lib/observability"
 
 /** What a paid month is worth, matching the Builder plan's description. */

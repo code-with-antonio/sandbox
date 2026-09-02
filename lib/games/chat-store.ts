@@ -25,6 +25,25 @@ export async function loadGameMessages(gameId: string): Promise<UIMessage[]> {
 }
 
 /**
+ * The organization a game belongs to, or `undefined` if the game is gone.
+ *
+ * The agent bills the org that owns the game rather than one it is told about:
+ * the model id on a turn comes from the browser, but who pays for it is settled
+ * here, from the row, where a tab cannot reach it.
+ */
+export async function loadGameOrgId(
+  gameId: string
+): Promise<string | undefined> {
+  const [game] = await db
+    .select({ orgId: games.orgId })
+    .from(games)
+    .where(eq(games.id, gameId))
+    .limit(1)
+
+  return game?.orgId
+}
+
+/**
  * Replaces a game's chat thread.
  *
  * The thread is stored whole on every turn, so the caller passes the complete

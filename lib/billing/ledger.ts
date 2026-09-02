@@ -1,12 +1,13 @@
-import "server-only"
-
-import { auth } from "@clerk/nextjs/server"
 import { eq, sql } from "drizzle-orm"
 
-import { creditLedger, db } from "@/lib/db"
+// Imported straight from `./client` rather than `@/lib/db`, and taking an
+// explicit `orgId` rather than reading Clerk's: `chargeStep` runs inside the
+// Trigger.dev worker, where the `server-only` marker on the `@/lib/db` entry
+// would throw and where there is no session to read an org from.
+import { creditLedger, db } from "@/lib/db/client"
+import { DOLLAR } from "@/lib/billing/format"
 
-/** One dollar, in the billionths the ledger counts in. */
-export const DOLLAR = 1_000_000_000n
+export { DOLLAR }
 
 /**
  * What every organization starts with, before it has paid for anything.
@@ -22,16 +23,19 @@ export const DOLLAR = 1_000_000_000n
 export const FREE_CREDITS = DOLLAR
 
 /**
- * The active organization's remaining credits, in billionths of a dollar.
+ * An organization's remaining credits, in billionths of a dollar.
+ *
+ * Takes the org rather than reading it from Clerk so that the one caller
+ * without a session — the chat agent — can use the same function. An absent
+ * org is accepted because a signed-in user with no active organization is a
+ * real state, and it reads the same as an org that has no rows.
  *
  * Negative balances are real and expected — a build already in flight is
  * allowed to finish, and its last steps land after the balance hits zero.
  */
-export async function getCreditBalance(): Promise<bigint> {
-  const { orgId } = await auth()
-
-  // No active organization means no rows could belong to the caller, which is
-  // the same position a brand new org is in.
+export async function getCreditBalance(
+  orgId: string | null | undefined
+): Promise<bigint> {
   if (!orgId) {
     return FREE_CREDITS
   }
@@ -48,4 +52,37 @@ export async function getCreditBalance(): Promise<bigint> {
 
   // `sum` of no rows is null, not zero.
   return FREE_CREDITS + BigInt(row?.total ?? 0)
+}
+
+/**
+ * Bills an organization for one step of a turn.
+ *
+ * `amount` is what the step cost — a positive number — and is stored negated,
+ * because the ledger holds movements rather than debts and a balance is their
+ * sum.
+ *
+ * The response id is what makes this safe to call more than once. A step that
+ * is retried, or a turn recovered onto a fresh worker after a crash, replays
+ * the same response id, produces the same entry key, and is rejected by the
+ * unique index rather than billed again.
+ */
+export async function chargeStep({
+  orgId,
+  responseId,
+  amount,
+}: {
+  orgId: string
+  responseId: string
+  amount: bigint
+}): Promise<void> {
+  // A step that cost nothing — no usage reported, or a turn stopped before the
+  // model ran — is not a row worth writing.
+  if (amount <= 0n) {
+    return
+  }
+
+  await db
+    .insert(creditLedger)
+    .values({ orgId, entryKey: `step:${responseId}`, amount: -amount })
+    .onConflictDoNothing()
 }

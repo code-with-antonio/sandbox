@@ -2,6 +2,7 @@
 
 import type { ChatSessionPersistedState } from "@trigger.dev/sdk/chat"
 import type { UIMessage } from "ai"
+import { useRouter } from "next/navigation"
 import { useCallback, useState } from "react"
 
 import { ChatPreview } from "@/components/chat-preview"
@@ -39,10 +40,19 @@ export function GameChat({
   // is therefore only the starting answer, not the standing one.
   const [hasSandbox, setHasSandbox] = useState(sandboxId !== null)
 
+  const router = useRouter()
+
   const handleTurnComplete = useCallback(() => {
     setPreviewRevision((revision) => revision + 1)
     setHasSandbox(true)
-  }, [])
+
+    // The turn just spent credits, and the sidebar that shows the balance is
+    // rendered by the layout above this page — server-side, once, when the
+    // route was entered. Re-rendering it is what makes the number move; the
+    // refresh keeps this component's own state, so the thread and the preview
+    // are untouched by it.
+    router.refresh()
+  }, [router])
 
   const thread = (
     <ChatThread
