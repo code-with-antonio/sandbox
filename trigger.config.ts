@@ -1,3 +1,5 @@
+import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
 import { additionalFiles } from "@trigger.dev/build/extensions/core";
 import { defineConfig } from "@trigger.dev/sdk";
 
@@ -21,11 +23,25 @@ export default defineConfig({
   },
   dirs: ["trigger"],
   build: {
-    // Nothing imports the sandbox seed files — they are read off disk at
-    // runtime by `@/lib/games/seed` — so the bundler never sees them and they
-    // have to be copied into the deployment by hand. They land at the same
-    // path relative to the deployment root that they have here, which is what
-    // that module resolves them from.
-    extensions: [additionalFiles({ files: ["lib/games/runtime/**/*"] })],
+    extensions: [
+      // Nothing imports the sandbox seed files — they are read off disk at
+      // runtime by `@/lib/games/seed` — so the bundler never sees them and they
+      // have to be copied into the deployment by hand. They land at the same
+      // path relative to the deployment root that they have here, which is what
+      // that module resolves them from.
+      additionalFiles({ files: ["lib/games/runtime/**/*"] }),
+      // Uploads source maps for the deployed bundle and injects the matching
+      // release into it, so the stack traces Sentry shows for a failed run
+      // point at this source rather than at minified worker output. Deploy-only
+      // — `trigger dev` runs unbundled and needs neither.
+      esbuildPlugin(
+        sentryEsbuildPlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+        }),
+        { placement: "last", target: "deploy" },
+      ),
+    ],
   },
 });
