@@ -72,16 +72,17 @@ export function GameChat({
   // empty panel — the thread gets the window, and centers itself in it on its
   // own.
   if (!hasSandbox) {
-    return <div className="flex h-svh flex-col">{thread}</div>
+    return <div className="flex min-h-0 flex-1 flex-col">{thread}</div>
   }
 
   // The panel group hard-codes `height: 100%` as an inline style, so no height
-  // class of ours can outrank it — the window height has to come from a parent
-  // instead. Without one the chain up to the sidebar inset is all `auto`, and a
-  // long thread grows the group past the window and scrolls the page rather
-  // than the message scroller.
+  // class of ours can outrank it — the height has to come from a parent
+  // instead, and `min-h-0` is what lets this one shrink to what the page's
+  // column leaves it. Without a definite height the chain up to the sidebar
+  // inset is all `auto`, and a long thread grows the group past the window and
+  // scrolls the page rather than the message scroller.
   return (
-    <div className="h-svh">
+    <div className="min-h-0 flex-1">
       <ResizablePanelGroup>
         <ResizablePanel
           defaultSize="40"

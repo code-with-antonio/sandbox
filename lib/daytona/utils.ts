@@ -7,7 +7,7 @@ import { daytona } from "@/lib/daytona/client"
 // `server-only` marker on the `@/lib/db` entry would throw.
 import { db, games } from "@/lib/db/client"
 import { readRuntimeFiles } from "@/lib/games/seed"
-import { elapsed, logger } from "@/lib/observability"
+import { describeError, elapsed, logger } from "@/lib/observability"
 
 // Where the game's source lives inside the sandbox. `/home/daytona` is the
 // sandbox user's home, so this is the path a dev server would be pointed at.
@@ -61,6 +61,96 @@ export async function createGameSandbox(
   })
 
   return { sandbox }
+}
+
+/**
+ * Deletes every Daytona sandbox belonging to a game, and reports how many went.
+ *
+ * Sandboxes are found by the `gameId` label `createGameSandbox` puts on them
+ * rather than by the id on the row, because the row is not a complete record of
+ * them: the id is written last, so a crash in between leaves a sandbox that is
+ * running and labelled and that nothing points at. A delete has to take those
+ * with it — a sandbox nobody can reach still bills. `sandboxId` is passed in
+ * as well for the opposite case, a row naming a sandbox the label search
+ * misses, and is skipped when the search already found it.
+ *
+ * Every sandbox is attempted before anything throws, so one that refuses to go
+ * cannot strand the rest. That it throws at all is what lets the caller keep
+ * the game row on failure: the row is the only handle a retry has.
+ */
+export async function deleteGameSandboxes(
+  gameId: string,
+  sandboxId?: string | null
+): Promise<number> {
+  const startedAt = performance.now()
+  const sandboxes = new Map<string, Sandbox>()
+
+  for await (const sandbox of daytona.list({ labels: { gameId } })) {
+    sandboxes.set(sandbox.id, sandbox)
+  }
+
+  if (sandboxId && !sandboxes.has(sandboxId)) {
+    try {
+      sandboxes.set(sandboxId, await daytona.get(sandboxId))
+    } catch (error) {
+      // Almost always a sandbox that is already gone, which is nothing to
+      // delete and no reason to fail — but it is also the only signal that a
+      // row and Daytona disagree, so it is a warning rather than a swallow.
+      logger.warn(
+        logger.fmt`Could not fetch sandbox ${sandboxId} of game ${gameId} to delete it`,
+        { "game.id": gameId, "sandbox.id": sandboxId, ...describeError(error) }
+      )
+    }
+  }
+
+  const failed: string[] = []
+  let deleted = 0
+
+  for (const sandbox of sandboxes.values()) {
+    // Already on its way out. Asking again would only produce an error to
+    // swallow, and swallowing it would hide the ones that matter.
+    if (sandbox.state === "destroyed" || sandbox.state === "destroying") {
+      continue
+    }
+
+    try {
+      await daytona.delete(sandbox)
+      deleted += 1
+    } catch (error) {
+      failed.push(sandbox.id)
+
+      // Per sandbox rather than only in the throw below, because the throw
+      // reaches the player as "try again" and this is the half an operator
+      // needs: which sandbox, in what state, and what Daytona said about it.
+      logger.error(
+        logger.fmt`Could not delete sandbox ${sandbox.id} of game ${gameId}`,
+        {
+          "game.id": gameId,
+          "sandbox.id": sandbox.id,
+          "sandbox.state": String(sandbox.state),
+          ...describeError(error),
+        }
+      )
+    }
+  }
+
+  if (failed.length > 0) {
+    throw new Error(
+      `Could not delete ${failed.length} of ${sandboxes.size} sandboxes for game ${gameId}`
+    )
+  }
+
+  // The counterpart to the create log, and the only place a delete is visible:
+  // more than one sandbox here means the leak described above happened and was
+  // cleaned up, which is worth being able to count.
+  logger.info(logger.fmt`Deleted ${deleted} sandboxes for game ${gameId}`, {
+    "game.id": gameId,
+    "sandbox.deleted": deleted,
+    "sandbox.found": sandboxes.size,
+    duration_ms: elapsed(startedAt),
+  })
+
+  return deleted
 }
 
 /**

@@ -1,78 +1,15 @@
 "use server"
 
-import { auth } from "@clerk/nextjs/server"
 import * as Sentry from "@sentry/nextjs"
 import { auth as triggerAuth } from "@trigger.dev/sdk"
 import { chat, type ChatStartSessionParams } from "@trigger.dev/sdk/ai"
 
 import { hasCreditsToBuild, OUT_OF_CREDITS } from "@/lib/billing/ledger"
-import { getGame } from "@/lib/games/queries"
+import { authorizeGame } from "@/lib/games/authorize"
 import { describeError, elapsed } from "@/lib/observability"
 import type { gameChat } from "@/trigger/chat"
 
 const startSession = chat.createStartSessionAction<typeof gameChat>("game-chat")
-
-/**
- * The check the chat route handler used to run per request. It moves here
- * because these two actions are the only paths that hand the browser a token
- * for a chat session — being signed in is not the same as being entitled to
- * this game's thread, and the id arrives from the browser.
- */
-async function authorizeGame(gameId: string, action: string): Promise<string> {
-  const { userId, orgId } = await auth()
-
-  // These two rejections are the app's authorization boundary for chat, and a
-  // boundary nobody can see is a boundary nobody can tell is holding. Both are
-  // warnings rather than errors: a signed-out tab left open produces the first
-  // and a stale bookmark the second, so neither is on its own a problem — a
-  // run of them from one caller is.
-  if (!userId || !orgId) {
-    Sentry.logger.warn(
-      Sentry.logger.fmt`Rejected unauthenticated ${action} for game ${gameId}`,
-      {
-        "app.action": action,
-        "game.id": gameId,
-        "auth.has_user": Boolean(userId),
-        "auth.has_organization": Boolean(orgId),
-      }
-    )
-
-    throw new Error("Unauthorized")
-  }
-
-  // Also the ownership check — `getGame` only resolves games belonging to the
-  // caller's active organization.
-  if (!(await getGame(gameId))) {
-    Sentry.logger.warn(
-      Sentry.logger
-        .fmt`Rejected ${action} for game ${gameId} the caller cannot see`,
-      {
-        "app.action": action,
-        "game.id": gameId,
-        "user.id": userId,
-        "organization.id": orgId,
-      }
-    )
-
-    throw new Error("Not Found")
-  }
-
-  // Tags rather than scope attributes, and for events rather than logs:
-  // attributes set on a scope never reach logs, and the logs in this file name
-  // the game explicitly anyway. What this buys is that a throw from the Trigger
-  // handover below arrives already saying which game and caller it was.
-  //
-  // Per-request rather than global, so one caller's identity cannot leak into
-  // a concurrent request's events.
-  Sentry.getIsolationScope().setTags({
-    "app.action": action,
-    "game.id": gameId,
-    "user.id": userId,
-    "organization.id": orgId,
-  })
-
-  return orgId
-}
 
 /**
  * Creates the chat session and triggers its first run, then returns a
@@ -84,7 +21,7 @@ export async function startGameChatSession(
 ) {
   const startedAt = performance.now()
 
-  const orgId = await authorizeGame(params.chatId, "startGameChatSession")
+  const { orgId } = await authorizeGame(params.chatId, "startGameChatSession")
 
   // Checked before the session exists rather than inside it: a session that
   // cannot afford a turn should never be created, because creating one starts a
