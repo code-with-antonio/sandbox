@@ -1,33 +1,23 @@
 "use client"
 
-import {
-  ArrowUpIcon,
-  ChevronDownIcon,
-  GripIcon,
-  SquareIcon,
-} from "lucide-react"
+import { ArrowUpIcon, SquareIcon } from "lucide-react"
 
+import { ModelPicker } from "@/components/model-picker"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   InputGroup,
   InputGroupAddon,
-  InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group"
-
-const models = ["Kimi K3", "Claude Opus 5", "GPT-5", "Gemini 3 Pro"]
+import type { GameModelId } from "@/lib/games/model-catalog"
 
 export function ChatComposer({
   value,
   onValueChange,
   onSubmit,
   onStop,
+  modelId,
+  onModelChange,
   streaming = false,
   disabled = false,
   placeholder = "Describe the game you want to build…",
@@ -38,6 +28,9 @@ export function ChatComposer({
   onSubmit: (value: string) => void
   /** Cancels the turn in flight. Required for the button to offer a stop. */
   onStop?: () => void
+  /** The model the next turn runs on, and the way to change it. */
+  modelId: GameModelId
+  onModelChange: (modelId: GameModelId) => void
   /** A turn is in flight, so the submit button becomes a stop button. */
   streaming?: boolean
   disabled?: boolean
@@ -81,22 +74,7 @@ export function ChatComposer({
           className="field-sizing-content max-h-48 min-h-10"
         />
         <InputGroupAddon align="block-end">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <InputGroupButton>
-                  <GripIcon />
-                  Kimi K3
-                  <ChevronDownIcon />
-                </InputGroupButton>
-              }
-            />
-            <DropdownMenuContent className="w-auto">
-              {models.map((model) => (
-                <DropdownMenuItem key={model}>{model}</DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ModelPicker modelId={modelId} onModelChange={onModelChange} />
           {/* Base UI buttons default to `type="button"`, so only send opts in. */}
           {canStop ? (
             <Button

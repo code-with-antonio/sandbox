@@ -11,15 +11,19 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
+import type { GameModelId } from "@/lib/games/model-catalog"
 
 export function GameChat({
   gameId,
   initialMessages,
+  initialModelId,
   initialSession,
   sandboxId,
 }: {
   gameId: string
   initialMessages: UIMessage[]
+  /** The model this thread opens on — see `GamePage` for where it comes from. */
+  initialModelId: GameModelId
   initialSession?: ChatSessionPersistedState
   sandboxId: string | null
 }) {
@@ -44,6 +48,7 @@ export function GameChat({
     <ChatThread
       gameId={gameId}
       initialMessages={initialMessages}
+      initialModelId={initialModelId}
       initialSession={initialSession}
       onTurnComplete={handleTurnComplete}
     />

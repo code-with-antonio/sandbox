@@ -16,7 +16,7 @@ import {
   CircleQuestionMarkIcon,
 } from "lucide-react"
 import Image from "next/image"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { ChatComposer } from "@/components/chat-composer"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -46,6 +46,7 @@ import {
   mintGameChatAccessToken,
   startGameChatSession,
 } from "@/lib/games/chat-actions"
+import type { GameModelId } from "@/lib/games/model-catalog"
 import { describeError } from "@/lib/observability"
 import { cn } from "@/lib/utils"
 // Type-only: the agent module reaches the server bundle, never the browser.
@@ -57,15 +58,27 @@ const ASK_PLAYER = "ask_player"
 export function ChatThread({
   gameId,
   initialMessages,
+  initialModelId,
   initialSession,
   onTurnComplete,
 }: {
   gameId: string
   initialMessages: UIMessage[]
+  initialModelId: GameModelId
   initialSession?: ChatSessionPersistedState
   onTurnComplete: () => void
 }) {
   const [prompt, setPrompt] = useState("")
+  // The thread owns the choice from here on, because the thread is what sends
+  // the turns. It starts on whatever the home page picked, and a switch made
+  // here lives as long as the tab — nothing on the game records what it was
+  // built with, so a reload starts over from the URL.
+  const [modelId, setModelId] = useState<GameModelId>(initialModelId)
+
+  // Memoized because the transport re-reads this whenever its identity changes,
+  // and a fresh object literal every render would be a change every render.
+  const clientData = useMemo(() => ({ modelId }), [modelId])
+
   // There is no endpoint to point at — the transport talks to the chat agent
   // directly, and both callbacks are server actions so the browser never holds
   // an environment secret key. The chat id doubles as the game id the thread is
@@ -75,6 +88,10 @@ export function ChatThread({
     accessToken: ({ chatId }) => mintGameChatAccessToken(chatId),
     startSession: ({ chatId, clientData }) =>
       startGameChatSession({ chatId, clientData }),
+    // Merged into every turn's metadata, and handed to `startSession` for the
+    // first one, so the agent reads the current pick rather than the one the
+    // thread opened on. The agent validates it against the same catalog.
+    clientData,
     // What the last turn persisted: the session token and the stream cursor, so
     // a fresh tab reconnects without a round-trip to create a session.
     sessions: initialSession ? { [gameId]: initialSession } : undefined,
@@ -293,6 +310,8 @@ export function ChatThread({
           onValueChange={setPrompt}
           onSubmit={handleSubmit}
           onStop={handleStop}
+          modelId={modelId}
+          onModelChange={setModelId}
           streaming={status === "submitted" || status === "streaming"}
           disabled={status !== "ready" || pendingQuestion}
           placeholder={

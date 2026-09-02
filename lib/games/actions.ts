@@ -9,6 +9,11 @@ import { redirect } from "next/navigation"
 
 import { db, games } from "@/lib/db"
 import { generateMessageId } from "@/lib/games/messages"
+import {
+  DEFAULT_GAME_MODEL_ID,
+  type GameModelId,
+  isGameModelId,
+} from "@/lib/games/model-catalog"
 import { describeError, elapsed } from "@/lib/observability"
 
 const TITLE_MODEL = "claude-haiku-4-5"
@@ -79,12 +84,13 @@ async function generateTitle(prompt: string) {
  *
  * The prompt is stored as the thread's opening message so it survives the
  * navigation without riding along in the URL; `ChatThread` asks for the reply
- * once the game page mounts.
+ * once the game page mounts. The model picked alongside it does ride in the
+ * URL — see the redirect below.
  *
  * Server Actions are reachable by direct POST, so the org is resolved from the
  * session here rather than trusted from the caller.
  */
-export async function createGame(prompt: string) {
+export async function createGame(prompt: string, modelId: GameModelId) {
   const startedAt = performance.now()
   const { userId, orgId } = await auth()
 
@@ -119,6 +125,10 @@ export async function createGame(prompt: string) {
     return
   }
 
+  // Checked rather than trusted, for the same reason the org is: this action is
+  // reachable by direct POST, and the value goes straight into the URL below.
+  const model = isGameModelId(modelId) ? modelId : DEFAULT_GAME_MODEL_ID
+
   const [game] = await db
     .insert(games)
     .values({
@@ -145,6 +155,9 @@ export async function createGame(prompt: string) {
     "user.id": userId ?? "unknown",
     "organization.id": orgId,
     "prompt.length": trimmedPrompt.length,
+    // Which model the game is about to be built with — the one question about
+    // a create that only a picker makes it possible to ask.
+    "game.model": model,
     duration_ms: elapsed(startedAt),
   })
 
@@ -153,6 +166,16 @@ export async function createGame(prompt: string) {
   // has — the new game is missing from it.
   refresh()
 
+  // The model rides along in the query string, which is the whole of how the
+  // home page's pick reaches the thread: it belongs to this navigation rather
+  // than to the game, so there is nothing on the row to keep it in, and the
+  // thread is free to change it from there. The default is left off — the game
+  // page falls back to it — so the ordinary URL stays `/games/{id}`.
+  //
   // `redirect` throws, so nothing may follow it here.
-  redirect(`/games/${game.id}`)
+  redirect(
+    model === DEFAULT_GAME_MODEL_ID
+      ? `/games/${game.id}`
+      : `/games/${game.id}?model=${model}`
+  )
 }
