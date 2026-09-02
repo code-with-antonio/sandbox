@@ -1,18 +1,31 @@
-import { anthropic } from "@ai-sdk/anthropic"
 import { chat, upsertIncomingMessage } from "@trigger.dev/sdk/ai"
 import { stepCountIs, streamText } from "ai"
+import { z } from "zod"
 
 import { createGameSandbox } from "@/lib/daytona/utils"
+import { gameModelSettings } from "@/lib/games/agent"
 import {
   loadGameMessages,
   saveGameMessages,
   saveGameTurn,
 } from "@/lib/games/chat-store"
 import { gameInstructions } from "@/lib/games/instructions"
+import { DEFAULT_GAME_MODEL_ID, GAME_MODELS } from "@/lib/games/model-catalog"
 import { describeError, elapsed, logger } from "@/lib/observability"
 import { createGameTools } from "@/lib/games/tools"
 
-const MODEL = "claude-opus-5"
+// Everything the browser gets to say about a turn, which is the model to run it
+// on and nothing else. The id is checked against the catalog rather than taken
+// as a string, so a tab naming a model this app doesn't offer — or one that
+// doesn't exist — is rejected here instead of at the provider.
+//
+// Optional at both levels because there is no picker yet: nothing sends client
+// data at all today, and a turn with none runs on `DEFAULT_GAME_MODEL_ID`.
+const gameClientDataSchema = z
+  .object({
+    modelId: z.enum(GAME_MODELS.map((model) => model.id)).optional(),
+  })
+  .optional()
 
 // A turn is a read-edit-read loop over the game's files, so it needs room for
 // many steps; the default of one would stop the turn dead after the first tool
@@ -31,6 +44,7 @@ const MAX_STEPS = 48
  */
 export const gameChat = chat.agent({
   id: "game-chat",
+  clientDataSchema: gameClientDataSchema,
   hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
     const startedAt = performance.now()
     const stored = await loadGameMessages(chatId)
@@ -88,6 +102,7 @@ export const gameChat = chat.agent({
     uiMessages,
     chatAccessToken,
     lastEventId,
+    clientData,
   }) => {
     const startedAt = performance.now()
 
@@ -120,7 +135,7 @@ export const gameChat = chat.agent({
     // turn that began and never ended is a gap rather than something to infer.
     logger.info(logger.fmt`Chat turn complete for game ${chatId}`, {
       "game.id": chatId,
-      "gen_ai.request.model": MODEL,
+      "gen_ai.request.model": clientData?.modelId ?? DEFAULT_GAME_MODEL_ID,
       "chat.messages": uiMessages.length,
       // A turn that ends with no cursor cannot be resumed, so a reload
       // replays it — worth being able to count.
@@ -135,13 +150,17 @@ export const gameChat = chat.agent({
   // only passed there: history re-converted at the top of a later turn needs
   // the same set to make sense of the tool calls already in it.
   tools: ({ chatId }) => createGameTools(chatId),
-  run: async ({ messages, tools, signal }) =>
+  run: async ({ messages, tools, signal, clientData }) =>
     streamText({
       // Spread first, so every option below still wins. Wires up the
       // `prepareStep` behind compaction, steering and background injection —
       // all of which silently no-op without it.
       ...chat.toStreamTextOptions({ tools }),
-      model: anthropic(MODEL),
+      // Read per turn rather than fixed for the thread, so switching models
+      // mid-conversation takes effect on the next message and carries the
+      // history with it. Spread rather than assigned because what varies with
+      // the model is `model` today and may not be only that later.
+      ...gameModelSettings(clientData?.modelId ?? DEFAULT_GAME_MODEL_ID),
       // `instructions`, not the deprecated `system`. Passed here rather than
       // through `chat.prompt.set()` because the prompt is static — there is no
       // per-chat or dashboard-versioned part of it to resolve in a hook.
