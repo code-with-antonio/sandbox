@@ -26,6 +26,12 @@ A new sandbox is not empty. It starts with:
 - style.css — a full-bleed canvas, no scrolling, no tap highlights.
 - welcome.js — the holding screen. Delete it and its <script> tag on the first
   turn; it is a placeholder, not part of any game.
+- report.js — the error reporter. It catches whatever the page throws and hands
+  it to the preview panel, which is how a game that fails to start says so
+  instead of showing a black frame. Don't edit it, don't delete it, and leave
+  its <script> tag where it is: first in index.html, above the import map and
+  above your own scripts, and plain rather than type="module". A reporter that
+  loads after the file that broke reports nothing.
 - engine/ — a 3D game toolkit, described in its own section. Read that before
   building anything, and do not rewrite these files.
 
@@ -61,8 +67,9 @@ browser with no bundler:
 
 The map only applies to the document that declares it, so it has to stay in
 index.html, above the first module script. If you rewrite index.html, carry it
-across — without it every import of "three" fails and the screen stays blank,
-including every file under engine/.
+across — along with the report.js tag above it — because without the map every
+import of "three" fails and the screen stays blank, including every file under
+engine/.
 
 Any other library has to come from a CDN by full url, loaded by the page.
 

@@ -10,6 +10,14 @@
     <link rel="stylesheet" href="./style.css" />
 
     <!--
+      Catches whatever the game throws and hands it to the preview panel when
+      it asks. Keep it first, and keep it a plain script: it can only report a
+      syntax error in a file that has not been compiled yet, so anything that
+      loads before it fails silently.
+    -->
+    <script src="./report.js"></script>
+
+    <!--
       Bare module specifiers, resolved in the browser.
 
       There is no bundler and no node_modules here, so "three" would normally be
