@@ -16,9 +16,11 @@ import {
   CircleQuestionMarkIcon,
 } from "lucide-react"
 import Image from "next/image"
+import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { ChatComposer } from "@/components/chat-composer"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker"
 import { Message, MessageAvatar, MessageContent } from "@/components/ui/message"
@@ -57,12 +59,14 @@ const ASK_PLAYER = "ask_player"
 
 export function ChatThread({
   gameId,
+  credits,
   initialMessages,
   initialModelId,
   initialSession,
   onTurnComplete,
 }: {
   gameId: string
+  credits: bigint
   initialMessages: UIMessage[]
   initialModelId: GameModelId
   initialSession?: ChatSessionPersistedState
@@ -108,6 +112,7 @@ export function ChatThread({
     addToolOutput,
     stop: stopStream,
     status,
+    error,
   } = useChat({
     id: gameId,
     messages: initialMessages,
@@ -156,6 +161,12 @@ export function ChatThread({
     },
   })
 
+  // The balance as of the last server render, so this closes the composer
+  // before a turn is attempted rather than after one is refused. It cannot
+  // notice a balance emptied by the turn now streaming — `onTurnComplete`
+  // refreshes the page, and the agent refuses the next turn regardless.
+  const outOfCredits = credits <= 0n
+
   // Synced in an effect rather than assigned during render, which is a ref
   // write React's rules — rightly — refuse.
   useEffect(() => {
@@ -175,10 +186,13 @@ export function ChatThread({
 
     submittedGameId.current = gameId
 
-    if (initialMessages.at(-1)?.role === "user") {
+    // A new game arrives with its opening prompt already stored, so without
+    // this guard an org with no credits would open every game it created
+    // straight into a refused turn.
+    if (!outOfCredits && initialMessages.at(-1)?.role === "user") {
       sendMessage()
     }
-  }, [gameId, initialMessages, sendMessage])
+  }, [gameId, initialMessages, sendMessage, outOfCredits])
 
   function handleSubmit(value: string) {
     sendMessage({ text: value })
@@ -304,7 +318,34 @@ export function ChatThread({
           <MessageScrollerButton />
         </MessageScroller>
       </MessageScrollerProvider>
-      <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4">
+      <div className="mx-auto flex w-full max-w-3xl shrink-0 flex-col gap-3 px-4 pb-4">
+        {/* Two ways to arrive here, and the balance is checked first because it
+            is the one that knows *why*: a turn refused before it started for
+            want of credits comes back as an ordinary error, and a Server Action
+            does not promise to deliver its message intact. Anything else that
+            went wrong says so in its own words. */}
+        {outOfCredits ? (
+          <Alert>
+            <CircleAlertIcon />
+            <AlertTitle>Out of credits</AlertTitle>
+            <AlertDescription>
+              <p>
+                Building a game spends credits, and this organization has none
+                left.{" "}
+                <Link href="/billing" className="underline underline-offset-4">
+                  Add more from the billing page
+                </Link>{" "}
+                to pick this game back up.
+              </p>
+            </AlertDescription>
+          </Alert>
+        ) : error ? (
+          <Alert>
+            <CircleAlertIcon />
+            <AlertTitle>That turn didn&apos;t finish</AlertTitle>
+            <AlertDescription>{error.message}</AlertDescription>
+          </Alert>
+        ) : null}
         <ChatComposer
           value={prompt}
           onValueChange={setPrompt}
@@ -313,9 +354,13 @@ export function ChatThread({
           modelId={modelId}
           onModelChange={setModelId}
           streaming={status === "submitted" || status === "streaming"}
-          disabled={status !== "ready" || pendingQuestion}
+          disabled={status !== "ready" || pendingQuestion || outOfCredits}
           placeholder={
-            pendingQuestion ? "Pick an answer above…" : "Ask for a change…"
+            outOfCredits
+              ? "Out of credits"
+              : pendingQuestion
+                ? "Pick an answer above…"
+                : "Ask for a change…"
           }
         />
       </div>

@@ -1,12 +1,33 @@
-import "server-only"
+import {
+  createClerkClient,
+  type BillingSubscriptionItem,
+  type ClerkClient,
+} from "@clerk/backend"
 
-import { auth, clerkClient } from "@clerk/nextjs/server"
-import type { BillingSubscriptionItem } from "@clerk/backend"
-import * as Sentry from "@sentry/nextjs"
-
-import { creditLedger, db } from "@/lib/db"
 import { DOLLAR } from "@/lib/billing/format"
-import { describeError } from "@/lib/observability"
+// Imported straight from `./client` rather than `@/lib/db`, and taking an
+// explicit `orgId`: the chat agent reconciles too, from inside the Trigger.dev
+// worker, where the `server-only` marker would throw and there is no session.
+import { creditLedger, db } from "@/lib/db/client"
+import { describeError, logger } from "@/lib/observability"
+
+/**
+ * Clerk's backend client, built here rather than taken from
+ * `@clerk/nextjs/server`.
+ *
+ * `clerkClient()` from the Next package reads request-scoped configuration and
+ * is not available in the worker; this one is constructed from the secret key
+ * alone and works in both runtimes. Built once, on first use rather than at
+ * import, so a module graph that merely mentions billing does not demand the
+ * key be present.
+ */
+let client: ClerkClient | undefined
+
+function clerk(): ClerkClient {
+  client ??= createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY })
+
+  return client
+}
 
 /** What a paid month is worth, matching the Builder plan's description. */
 const MONTHLY_GRANT = 10n * DOLLAR
@@ -93,27 +114,18 @@ function grantsFor(orgId: string, item: BillingSubscriptionItem) {
 }
 
 /**
- * Credits the active organization for every month of its subscription.
+ * Credits an organization for every month of its subscription.
  *
  * Safe to call on every page load: it grants a given month exactly once, no
  * matter how many times it runs or how many run at the same time. A failure
  * here is deliberately not thrown — a Clerk outage should leave the balance
  * showing what the ledger already holds, not take down the page that lets
- * someone top up.
+ * someone top up, or the build that is already paid for.
  */
-export async function reconcileCredits(): Promise<void> {
-  const { orgId } = await auth()
-
-  // Plans are sold to organizations, so without an active one there is no
-  // subscription to read and nothing to credit.
-  if (!orgId) {
-    return
-  }
-
+export async function reconcileCredits(orgId: string): Promise<void> {
   try {
-    const clerk = await clerkClient()
     const subscription =
-      await clerk.billing.getOrganizationBillingSubscription(orgId)
+      await clerk().billing.getOrganizationBillingSubscription(orgId)
 
     const grants = subscription.subscriptionItems.flatMap((item) =>
       grantsFor(orgId, item)
@@ -125,7 +137,7 @@ export async function reconcileCredits(): Promise<void> {
 
     await db.insert(creditLedger).values(grants).onConflictDoNothing()
   } catch (error) {
-    Sentry.logger.error("Could not reconcile credits against the subscription", {
+    logger.error("Could not reconcile credits against the subscription", {
       "organization.id": orgId,
       ...describeError(error),
     })

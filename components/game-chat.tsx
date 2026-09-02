@@ -16,12 +16,15 @@ import type { GameModelId } from "@/lib/games/model-catalog"
 
 export function GameChat({
   gameId,
+  credits,
   initialMessages,
   initialModelId,
   initialSession,
   sandboxId,
 }: {
   gameId: string
+  /** The organization's balance when the page was rendered. */
+  credits: bigint
   initialMessages: UIMessage[]
   /** The model this thread opens on — see `GamePage` for where it comes from. */
   initialModelId: GameModelId
@@ -57,6 +60,7 @@ export function GameChat({
   const thread = (
     <ChatThread
       gameId={gameId}
+      credits={credits}
       initialMessages={initialMessages}
       initialModelId={initialModelId}
       initialSession={initialSession}

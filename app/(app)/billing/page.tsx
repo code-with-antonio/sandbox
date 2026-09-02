@@ -19,7 +19,9 @@ export default async function BillingPage() {
   // organization has paid for are turned into ledger rows. Reconciling costs a
   // read of the subscription and, all but the first time each month, an insert
   // that conflicts and does nothing.
-  await reconcileCredits()
+  if (orgId) {
+    await reconcileCredits(orgId)
+  }
 
   const credits = await getCreditBalance(orgId)
 

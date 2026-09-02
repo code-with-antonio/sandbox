@@ -2,7 +2,11 @@ import { chat, upsertIncomingMessage } from "@trigger.dev/sdk/ai"
 import { stepCountIs, streamText } from "ai"
 import { z } from "zod"
 
-import { chargeStep } from "@/lib/billing/ledger"
+import {
+  chargeStep,
+  hasCreditsToBuild,
+  OUT_OF_CREDITS,
+} from "@/lib/billing/ledger"
 import { priceStep } from "@/lib/billing/pricing"
 import { createGameSandbox } from "@/lib/daytona/utils"
 import { gameModelSettings } from "@/lib/games/agent"
@@ -99,6 +103,39 @@ export const gameChat = chat.agent({
 
       throw error
     }
+  },
+  // Every turn, including the first turn of a continuation run — which is
+  // where `onChatStart` would have missed it. The session-start check in
+  // `@/lib/games/chat-actions` is the other half: this one catches the thread
+  // that was affordable when it opened and is not any more.
+  //
+  // Deliberately *not* per step. A turn that has started is paid for to the
+  // end, overdraft and all, because a game abandoned mid-write has cost the
+  // same and left nothing to show for it.
+  onTurnStart: async ({ chatId }) => {
+    const orgId = await loadGameOrgId(chatId)
+
+    // No row, no owner to bill and nothing to check against. The turn will
+    // fail on its own further down for the same reason.
+    if (!orgId) {
+      return
+    }
+
+    if (await hasCreditsToBuild(orgId)) {
+      return
+    }
+
+    logger.info(logger.fmt`Refused a turn for game ${chatId} — no credits`, {
+      "game.id": chatId,
+      "organization.id": orgId,
+    })
+
+    // Thrown, not written: the turn loop turns this into an error chunk, closes
+    // the turn, and leaves the session alive for the next message — so the
+    // player reads the reason in the thread and can carry on the moment they
+    // top up. The message is shown to them verbatim, so it says something a
+    // player can act on rather than something only a log would want.
+    throw new Error(OUT_OF_CREDITS)
   },
   onTurnComplete: async ({
     chatId,

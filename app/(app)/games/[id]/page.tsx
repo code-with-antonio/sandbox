@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server"
 import { notFound } from "next/navigation"
 
+import { getCreditBalance } from "@/lib/billing/ledger"
 import { GameChat } from "@/components/game-chat"
 import { DEFAULT_GAME_MODEL_ID, isGameModelId } from "@/lib/games/model-catalog"
 import { getGame } from "@/lib/games/queries"
@@ -11,6 +12,7 @@ export default async function GamePage({
 }: PageProps<"/games/[id]">) {
   await auth.protect({ unauthenticatedUrl: "/sign-in" })
 
+  const { orgId } = await auth()
   const { id } = await params
   const game = await getGame(id)
 
@@ -27,6 +29,10 @@ export default async function GamePage({
   return (
     <GameChat
       gameId={game.id}
+      // What the thread opens with. It goes stale as the turn spends, which is
+      // why it only decides whether to *offer* a turn — the agent decides
+      // whether to run one, and says so itself when it won't.
+      credits={await getCreditBalance(orgId)}
       initialMessages={game.messages}
       initialModelId={isGameModelId(model) ? model : DEFAULT_GAME_MODEL_ID}
       sandboxId={game.sandboxId}

@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm"
 // would throw and where there is no session to read an org from.
 import { creditLedger, db } from "@/lib/db/client"
 import { DOLLAR } from "@/lib/billing/format"
+import { reconcileCredits } from "@/lib/billing/reconcile"
 
 export { DOLLAR }
 
@@ -85,4 +86,39 @@ export async function chargeStep({
     .insert(creditLedger)
     .values({ orgId, entryKey: `step:${responseId}`, amount: -amount })
     .onConflictDoNothing()
+}
+
+/**
+ * What both gates say when an organization is out of credits.
+ *
+ * One wording, in the one module both of them already depend on. The agent's
+ * copy reaches the player verbatim, over the chat stream; the Server Action's
+ * copy may not survive the trip, which is why the thread decides what to show
+ * from the balance it was rendered with rather than from this string.
+ */
+export const OUT_OF_CREDITS =
+  "This organization is out of credits. Add more from the billing page to keep building."
+
+/**
+ * Whether an organization can start work.
+ *
+ * An empty balance is not taken at face value. Credits arrive by the month, and
+ * the only thing that turns a renewal into a ledger row is a reconcile — so an
+ * org that looks broke may simply not have been looked at since its month
+ * turned over. That is checked here, once, and only when the balance says no:
+ * a paying org is never made to wait on a Clerk round-trip, and an org that is
+ * genuinely out does not repeat one on every turn of a dead thread.
+ *
+ * This gates the *start* of work, never its middle. A build already running is
+ * allowed to finish and to end up below zero — the alternative is a game left
+ * half-written, which costs the same and leaves nothing behind.
+ */
+export async function hasCreditsToBuild(orgId: string): Promise<boolean> {
+  if ((await getCreditBalance(orgId)) > 0n) {
+    return true
+  }
+
+  await reconcileCredits(orgId)
+
+  return (await getCreditBalance(orgId)) > 0n
 }
