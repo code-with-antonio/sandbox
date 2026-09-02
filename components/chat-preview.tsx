@@ -114,6 +114,23 @@ export function ChatPreview({
         const message =
           error instanceof Error ? error.message : "Preview is unavailable"
 
+        // The player is about to see "Preview is unavailable" and nothing else
+        // — this is the only record of which of the several reasons it was.
+        // The route logs the two it answers deliberately (404, 409); what
+        // reaches here on top of those is a 500 or the fetch itself failing.
+        Sentry.logger.error(
+          Sentry.logger.fmt`Preview unavailable for game ${gameId}: ${message}`,
+          {
+            "game.id": gameId,
+            "game.revision": revision,
+            "exception.message": message,
+            // A failure on revision 0 is a preview that never loaded; a later
+            // one is a turn's build failing to reach a player who was watching
+            // the previous build a moment ago.
+            "preview.first_load": revision === 0,
+          }
+        )
+
         // A reload that fails leaves the game already on screen where it is.
         // It is the previous turn's build rather than the latest one, but the
         // panel has no retry of its own — trading a working preview for an

@@ -1,6 +1,7 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
+import * as Sentry from "@sentry/nextjs"
 import type { ChatSessionPersistedState } from "@trigger.dev/sdk/chat"
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react"
 import {
@@ -45,6 +46,7 @@ import {
   mintGameChatAccessToken,
   startGameChatSession,
 } from "@/lib/games/chat-actions"
+import { describeError } from "@/lib/observability"
 import { cn } from "@/lib/utils"
 // Type-only: the agent module reaches the server bundle, never the browser.
 import type { gameChat } from "@/trigger/chat"
@@ -78,6 +80,11 @@ export function ChatThread({
     sessions: initialSession ? { [gameId]: initialSession } : undefined,
   })
 
+  // Read inside `onError`, which `useChat` holds from the render it was created
+  // in — reading `messages` there directly would report the thread as it was
+  // when the callback was made rather than when the turn failed.
+  const messageCount = useRef(0)
+
   const {
     messages,
     sendMessage,
@@ -107,7 +114,36 @@ export function ChatThread({
     // on an error, still leaves every file it wrote on disk — that is what the
     // player is running now, so it is what the preview should show.
     onFinish: onTurnComplete,
+    // A turn that dies — the run failing, the transport losing the stream,
+    // a token that could not be refreshed — settles the status back to ready
+    // and leaves the thread looking like the agent simply had nothing to say.
+    // Nothing else in the app sees this: the worker's own failure is logged on
+    // its side only when the run itself failed, and a transport error never
+    // gets that far.
+    onError: (error) => {
+      Sentry.logger.error(
+        Sentry.logger.fmt`Chat turn failed for game ${gameId}`,
+        {
+          "game.id": gameId,
+          "chat.messages": messageCount.current,
+          "chat.resumed": Boolean(initialSession),
+          ...describeError(error),
+        }
+      )
+
+      // The log says a turn failed; this says why, with a stack trace and the
+      // replay of the session it happened in attached.
+      Sentry.captureException(error, {
+        tags: { "game.id": gameId },
+      })
+    },
   })
+
+  // Synced in an effect rather than assigned during render, which is a ref
+  // write React's rules — rightly — refuse.
+  useEffect(() => {
+    messageCount.current = messages.length
+  }, [messages])
 
   // A game is created with its opening prompt already stored as the thread's
   // first message, so a new thread arrives with a user turn and no reply. Ask
@@ -169,7 +205,7 @@ export function ChatThread({
                 <MessageScrollerItem key={message.id} messageId={message.id}>
                   <Message align={message.role === "user" ? "end" : "start"}>
                     {message.role === "assistant" && (
-                      <MessageAvatar className="size-8 bg-transparent self-start rounded-lg">
+                      <MessageAvatar className="size-8 self-start rounded-lg bg-transparent">
                         <Image
                           src="/logo.svg"
                           alt="Sandbox"
@@ -181,7 +217,9 @@ export function ChatThread({
                     )}
                     <MessageContent>
                       <Bubble
-                        variant={message.role === "user" ? "secondary" : "ghost"}
+                        variant={
+                          message.role === "user" ? "secondary" : "ghost"
+                        }
                         align={message.role === "user" ? "end" : "start"}
                       >
                         {/* A turn arrives as alternating text and tool parts,

@@ -5,6 +5,7 @@ import { tool } from "ai"
 import { z } from "zod"
 
 import { GAME_DIR, getGameSandbox } from "@/lib/daytona/utils"
+import { describeError, elapsed, logger } from "@/lib/observability"
 
 // Every path the agent gives is resolved inside this directory, and the game
 // directory is the whole of what the agent can touch: it is what the static
@@ -115,8 +116,18 @@ export function createGameTools(gameId: string) {
   const sandbox = () => {
     pending ??= getGameSandbox(gameId)
       .then(({ sandbox }) => sandbox)
-      .catch((error) => {
+      .catch((error: unknown) => {
         pending = undefined
+
+        // Every tool call in the turn is waiting on this one promise, so a
+        // failure here fails the whole turn rather than one edit. It is logged
+        // at the point it happens because the rethrow reaches each caller
+        // separately and would otherwise read as several unrelated failures.
+        logger.error(logger.fmt`Could not get a sandbox for game ${gameId}`, {
+          "game.id": gameId,
+          ...describeError(error),
+        })
+
         throw error
       })
 
@@ -135,7 +146,7 @@ export function createGameTools(gameId: string) {
           ),
       }),
       execute: ({ path: filePath }) =>
-        expected(async () => {
+        expected("read_file", gameId, filePath, async () => {
           const target = resolveGamePath(filePath)
           const box = await sandbox()
           const info = await statFile(box, target)
@@ -172,7 +183,7 @@ export function createGameTools(gameId: string) {
           .describe("The complete contents of the file, not a fragment."),
       }),
       execute: ({ path: filePath, content }) =>
-        expected(async () => {
+        expected("write_file", gameId, filePath, async () => {
           const target = resolveGamePath(filePath)
 
           if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) {
@@ -220,7 +231,7 @@ export function createGameTools(gameId: string) {
           ),
       }),
       execute: ({ path: filePath, find, replace, replace_all: replaceAll }) =>
-        expected(async () => {
+        expected("replace_text", gameId, filePath, async () => {
           const target = resolveGamePath(filePath)
 
           if (find === "") {
@@ -275,7 +286,7 @@ export function createGameTools(gameId: string) {
           ),
       }),
       execute: ({ path: filePath }) =>
-        expected(async () => {
+        expected("list_files", gameId, filePath, async () => {
           const target = resolveGamePath(filePath ?? ".", { allowRoot: true })
           const box = await sandbox()
 
@@ -317,7 +328,7 @@ export function createGameTools(gameId: string) {
           ),
       }),
       execute: ({ path: filePath }) =>
-        expected(async () => {
+        expected("delete_file", gameId, filePath, async () => {
           const target = resolveGamePath(filePath)
           const box = await sandbox()
           const info = await statFile(box, target)
@@ -352,13 +363,71 @@ export type GameTools = ReturnType<typeof createGameTools>
  */
 class ToolInputError extends Error {}
 
-async function expected(run: () => Promise<string>): Promise<string> {
+/**
+ * Runs a tool call, turning a `ToolInputError` back into a plain result, and
+ * logs how it went either way.
+ *
+ * This is the only path every tool call passes through, which makes it the one
+ * place worth logging them from: one wide event per call, carrying the tool,
+ * the game, the path it was pointed at and what it cost. That record is the
+ * agent's entire effect on a game — the chat thread shows what the model said
+ * it did, and this shows what actually reached the sandbox.
+ *
+ * The three outcomes are deliberately three levels. A refused call is a `warn`:
+ * the model mis-called the tool and will read the message and correct itself,
+ * so it is not a failure of the system, but a stream of them means the tool
+ * descriptions are not landing. A thrown call is an `error` and takes the turn
+ * down with it.
+ */
+async function expected(
+  tool: string,
+  gameId: string,
+  target: string | undefined,
+  run: () => Promise<string>
+): Promise<string> {
+  const startedAt = performance.now()
+
+  // `gen_ai.tool.name` and the game id go on every one of these, so a single
+  // turn's worth of calls can be pulled up as a group and read in order.
+  const attributes: Record<string, string | number | boolean> = {
+    "gen_ai.operation.name": "execute_tool",
+    "gen_ai.tool.name": tool,
+    "game.id": gameId,
+  }
+
+  // The path the model asked for, before it is resolved — an argument the
+  // model chose, and the thing most worth having when a call went wrong.
+  // Contents are never logged: game source stays out of Sentry, in line with
+  // the `httpBodies: []` stance in the SDK configs.
+  if (target !== undefined && target !== "") {
+    attributes["code.file.path"] = target
+  }
+
   try {
-    return await run()
+    const result = await run()
+
+    logger.info(logger.fmt`Agent called ${tool}`, {
+      ...attributes,
+      duration_ms: elapsed(startedAt),
+    })
+
+    return result
   } catch (error) {
     if (error instanceof ToolInputError) {
+      logger.warn(logger.fmt`Agent called ${tool} with unusable input`, {
+        ...attributes,
+        "tool.refusal": error.message,
+        duration_ms: elapsed(startedAt),
+      })
+
       return error.message
     }
+
+    logger.error(logger.fmt`Agent's call to ${tool} failed`, {
+      ...attributes,
+      ...describeError(error),
+      duration_ms: elapsed(startedAt),
+    })
 
     throw error
   }

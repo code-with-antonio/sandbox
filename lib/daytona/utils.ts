@@ -7,6 +7,7 @@ import { daytona } from "@/lib/daytona/client"
 // `server-only` marker on the `@/lib/db` entry would throw.
 import { db, games } from "@/lib/db/client"
 import { readRuntimeFiles } from "@/lib/games/seed"
+import { elapsed, logger } from "@/lib/observability"
 
 // Where the game's source lives inside the sandbox. `/home/daytona` is the
 // sandbox user's home, so this is the path a dev server would be pointed at.
@@ -28,6 +29,7 @@ export const GAME_DIR = "/home/daytona/game"
 export async function createGameSandbox(
   gameId: string
 ): Promise<{ sandbox: Sandbox }> {
+  const startedAt = performance.now()
   const { folders, files } = await readRuntimeFiles(GAME_DIR)
 
   const sandbox = await daytona.create({ labels: { gameId } })
@@ -46,6 +48,17 @@ export async function createGameSandbox(
     .update(games)
     .set({ sandboxId: sandbox.id })
     .where(eq(games.id, gameId))
+
+  // The one place a sandbox comes into existence, and the slowest step in a
+  // game's first turn — a create that has crept from seconds to a minute is
+  // visible here and nowhere else, which is why the duration is on it.
+  logger.info(logger.fmt`Created sandbox for game ${gameId}`, {
+    "game.id": gameId,
+    "sandbox.id": sandbox.id,
+    "sandbox.seed_files": files.length,
+    "sandbox.seed_folders": folders.length,
+    duration_ms: elapsed(startedAt),
+  })
 
   return { sandbox }
 }
@@ -72,17 +85,44 @@ export async function getGameSandbox(
     .limit(1)
 
   if (!game) {
+    // A tool call naming a game that isn't there means the session outlived
+    // its row, which no ordinary path produces — worth a line of its own
+    // before the throw, since the throw only says which id was missing.
+    logger.error(logger.fmt`No game ${gameId} to get a sandbox for`, {
+      "game.id": gameId,
+    })
+
     throw new Error(`No game ${gameId} to get a sandbox for`)
   }
 
   if (!game.sandboxId) {
+    // The fallback path described above. It is meant to be rare, so it is a
+    // warning rather than an info: a run of these means `onChatStart` is
+    // failing and every first turn is paying the create cost mid-stream.
+    logger.warn(
+      logger.fmt`Game ${gameId} had no sandbox at tool time, creating one`,
+      { "game.id": gameId }
+    )
+
     return createGameSandbox(gameId)
   }
 
   const sandbox = await daytona.get(game.sandboxId)
 
   if (sandbox.state !== "started") {
+    const startedAt = performance.now()
+
     await sandbox.start()
+
+    // The resumed-thread case. Ordinary, but it is seconds the player waits
+    // through before the agent's first tool call lands, so it is worth being
+    // able to see how often it happens and what it costs.
+    logger.info(logger.fmt`Restarted idle sandbox for game ${gameId}`, {
+      "game.id": gameId,
+      "sandbox.id": game.sandboxId,
+      "sandbox.previous_state": String(sandbox.state),
+      duration_ms: elapsed(startedAt),
+    })
   }
 
   return { sandbox }
@@ -118,14 +158,19 @@ const START_RETRIES = 10
 export async function startGameServer(
   sandboxId: string
 ): Promise<{ sandbox: Sandbox }> {
+  const startedAt = performance.now()
   const sandbox = await daytona.get(sandboxId)
 
   // Sandboxes stop themselves once idle, and a stopped one serves nothing.
-  if (sandbox.state !== "started") {
+  const wasStopped = sandbox.state !== "started"
+
+  if (wasStopped) {
     await sandbox.start()
   }
 
-  if (!(await serverResponds(sandbox))) {
+  const alreadyServing = await serverResponds(sandbox)
+
+  if (!alreadyServing) {
     // `nohup … &` hands the server off to init and closes the pipes the exec
     // is waiting on, so this returns instead of blocking for the server's
     // lifetime. The log is where to look when a preview comes back empty.
@@ -137,12 +182,38 @@ export async function startGameServer(
     // handed back before then loads as a connection error in the iframe.
     if (!(await serverResponds(sandbox, START_RETRIES))) {
       const log = await sandbox.process.executeCommand(`cat ${SERVER_LOG}`)
+      const output = log.result.trim() || "no output"
+
+      // The server's own stderr, which the exception below also carries — but
+      // as a log it is searchable across sandboxes, which is how a systemic
+      // failure (a base image without python3, a port taken by something else)
+      // reads as one thing rather than as scattered 500s.
+      logger.error(
+        logger.fmt`Game server failed to start in sandbox ${sandboxId}`,
+        {
+          "sandbox.id": sandboxId,
+          "sandbox.was_stopped": wasStopped,
+          "server.log": output,
+          duration_ms: elapsed(startedAt),
+        }
+      )
 
       throw new Error(
-        `Game server failed to start in sandbox ${sandboxId}: ${log.result.trim() || "no output"}`
+        `Game server failed to start in sandbox ${sandboxId}: ${output}`
       )
     }
   }
+
+  // One line per preview load, carrying the two facts that explain how long it
+  // took: whether the sandbox had to be woken, and whether a server was already
+  // on the port. A cold load pays both and takes seconds; a warm one is a
+  // health check and a signature.
+  logger.info(logger.fmt`Game server ready in sandbox ${sandboxId}`, {
+    "sandbox.id": sandboxId,
+    "sandbox.was_stopped": wasStopped,
+    "server.reused": alreadyServing,
+    duration_ms: elapsed(startedAt),
+  })
 
   return { sandbox }
 }
