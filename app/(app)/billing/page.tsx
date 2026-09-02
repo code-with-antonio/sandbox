@@ -2,16 +2,24 @@ import { PricingTable } from "@clerk/nextjs"
 import { auth } from "@clerk/nextjs/server"
 import type { Metadata } from "next"
 
+import { formatCredits } from "@/lib/billing/format"
+import { getCreditBalance } from "@/lib/billing/ledger"
+import { reconcileCredits } from "@/lib/billing/reconcile"
+
 export const metadata: Metadata = {
   title: "Billing",
 }
 
-// A stand-in balance until credits are metered for real. It reads as a number
-// here so the page can be looked at, and nothing else depends on it.
-const AVAILABLE_CREDITS = "$8.80"
-
 export default async function BillingPage() {
   await auth.protect({ unauthenticatedUrl: "/sign-in" })
+
+  // This is where someone lands after checkout, so it is where the months an
+  // organization has paid for are turned into ledger rows. Reconciling costs a
+  // read of the subscription and, all but the first time each month, an insert
+  // that conflicts and does nothing.
+  await reconcileCredits()
+
+  const credits = await getCreditBalance()
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -22,7 +30,7 @@ export default async function BillingPage() {
         <section>
           <p className="text-sm text-muted-foreground">Available credits</p>
           <p className="mt-1 font-heading text-4xl font-semibold tracking-tight tabular-nums">
-            {AVAILABLE_CREDITS}
+            {formatCredits(credits)}
           </p>
           <p className="mt-3 max-w-xl text-sm text-balance text-muted-foreground">
             Credits cover the models that build and revise your games. A scene

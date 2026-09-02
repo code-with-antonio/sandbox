@@ -29,12 +29,17 @@ import {
   SidebarMenuItem,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { formatCredits } from "@/lib/billing/format"
 import type { Game } from "@/lib/db/schema"
 
 export function AppSidebar({
   games,
+  credits,
   ...props
-}: React.ComponentProps<typeof Sidebar> & { games: Game[] }) {
+}: React.ComponentProps<typeof Sidebar> & {
+  games: Game[]
+  credits: bigint
+}) {
   const pathname = usePathname()
 
   return (
@@ -155,7 +160,7 @@ export function AppSidebar({
               <CoinsIcon />
               <span>Credits</span>
             </SidebarMenuButton>
-            <SidebarMenuBadge>$1.00</SidebarMenuBadge>
+            <SidebarMenuBadge>{formatCredits(credits)}</SidebarMenuBadge>
           </SidebarMenuItem>
         </SidebarMenu>
         <div className="flex items-center justify-between gap-2 px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
