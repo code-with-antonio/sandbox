@@ -23,6 +23,15 @@ export default defineConfig({
   },
   dirs: ["trigger"],
   build: {
+    // `@daytona/sdk` loads its heavier dependencies through a runtime
+    // `require` held in a variable (`form-data` for uploads, `tar` and `fs`
+    // for downloads, `fast-glob` for image contexts), which esbuild cannot
+    // see and therefore never pulls into the bundle. Locally the require
+    // still resolves through `node_modules`; in a deployed worker there is
+    // no `node_modules`, so the first upload fails with `Cannot find module
+    // 'form-data'`. Left external, the SDK is installed in the deployment
+    // instead of bundled and those requires resolve as they do here.
+    external: ["@daytona/sdk"],
     extensions: [
       // Nothing imports the sandbox seed files — they are read off disk at
       // runtime by `@/lib/games/seed` — so the bundler never sees them and they
