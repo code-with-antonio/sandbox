@@ -68,19 +68,24 @@ export function GameChat({
     />
   )
 
-  // Drop the split entirely rather than leave a resizable handle beside an
-  // empty panel — the thread gets the window, and centers itself in it on its
-  // own.
-  if (!hasSandbox) {
-    return <div className="flex min-h-0 flex-1 flex-col">{thread}</div>
-  }
-
   // The panel group hard-codes `height: 100%` as an inline style, so no height
   // class of ours can outrank it — the height has to come from a parent
   // instead, and `min-h-0` is what lets this one shrink to what the page's
   // column leaves it. Without a definite height the chain up to the sidebar
   // inset is all `auto`, and a long thread grows the group past the window and
   // scrolls the page rather than the message scroller.
+  //
+  // The group is here even before there is anything to preview, so that the
+  // thread keeps the same place in the tree throughout. Rendering it somewhere
+  // else while the second panel is missing would unmount and remount it the
+  // moment the first turn produces a sandbox — and a remounted `ChatThread`
+  // rebuilds `useChat` from the props of the last *server* render, which still
+  // end on the opening prompt. It would ask for a reply to a message the agent
+  // has just finished answering, and that turn reaches the model as a thread
+  // ending in its own words, which is not something a model can continue.
+  //
+  // A lone panel grows to fill the group, so nothing about the layout depends
+  // on the preview being there.
   return (
     <div className="min-h-0 flex-1">
       <ResizablePanelGroup>
@@ -91,18 +96,25 @@ export function GameChat({
         >
           {thread}
         </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel
-          defaultSize="60"
-          minSize="30"
-          className="flex h-full flex-col"
-        >
-          <ChatPreview
-            key={gameId}
-            gameId={gameId}
-            revision={previewRevision}
-          />
-        </ResizablePanel>
+        {/* The sandbox is created on the thread's first turn, so until then
+            there is nothing to show beside it — and a handle against an empty
+            panel is worse than no split at all. */}
+        {hasSandbox && (
+          <>
+            <ResizableHandle withHandle />
+            <ResizablePanel
+              defaultSize="60"
+              minSize="30"
+              className="flex h-full flex-col"
+            >
+              <ChatPreview
+                key={gameId}
+                gameId={gameId}
+                revision={previewRevision}
+              />
+            </ResizablePanel>
+          </>
+        )}
       </ResizablePanelGroup>
     </div>
   )
