@@ -23,7 +23,7 @@
 <p>
   <a href="https://ai-sdk.dev/"><img src="https://img.shields.io/badge/AI_SDK-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="AI SDK" /></a>&nbsp;
   <a href="https://cwa.run/trigger"><img src="https://img.shields.io/badge/Trigger.dev-635BFF?style=for-the-badge" alt="Trigger.dev" /></a>&nbsp;
-  <a href="https://www.daytona.io/"><img src="https://img.shields.io/badge/Daytona-0A0A0A?style=for-the-badge" alt="Daytona" /></a>&nbsp;
+  <a href="https://cwa.run/daytona"><img src="https://img.shields.io/badge/Daytona-0A0A0A?style=for-the-badge" alt="Daytona" /></a>&nbsp;
   <a href="https://cwa.run/neon"><img src="https://img.shields.io/badge/Neon-00E599?style=for-the-badge&logo=neon&logoColor=black" alt="Neon" /></a>&nbsp;
   <a href="https://cwa.run/clerk"><img src="https://img.shields.io/badge/Clerk-6C47FF?style=for-the-badge&logo=clerk&logoColor=white" alt="Clerk" /></a>&nbsp;
   <a href="https://cwa.run/sentry"><img src="https://img.shields.io/badge/Sentry-362D59?style=for-the-badge&logo=sentry&logoColor=white" alt="Sentry" /></a>&nbsp;
@@ -52,22 +52,22 @@
 
 Each chapter has a matching branch so you can check out the code at any point in the tutorial:
 
-| Branch | Chapter |
-|--------|---------|
-| `main` | Final project |
-| `chapter-01-setup` | Project setup |
-| `chapter-02-auth` | Clerk authentication and organizations |
-| `chapter-03-sidebar` | Dashboard sidebar |
-| `chapter-04-games` | Games list and creation |
-| `chapter-05-ai-chat` | AI chat with the AI SDK |
-| `chapter-06-durability` | Durable chat with Trigger.dev |
-| `chapter-07-sandboxing` | Daytona sandboxes and live preview |
-| `chapter-08-game-engine` | three.js game engine |
-| `chapter-09-briefing` | Briefing questions with the ask_player tool |
-| `chapter-10-observability` | Sentry observability |
-| `chapter-11-ai-models` | Model picker |
-| `chapter-12-billing` | Credits and Clerk Billing |
-| `chapter-13-bug-fixing` | Bug fixing |
+| Branch                     | Chapter                                     |
+| -------------------------- | ------------------------------------------- |
+| `main`                     | Final project                               |
+| `chapter-01-setup`         | Project setup                               |
+| `chapter-02-auth`          | Clerk authentication and organizations      |
+| `chapter-03-sidebar`       | Dashboard sidebar                           |
+| `chapter-04-games`         | Games list and creation                     |
+| `chapter-05-ai-chat`       | AI chat with the AI SDK                     |
+| `chapter-06-durability`    | Durable chat with Trigger.dev               |
+| `chapter-07-sandboxing`    | Daytona sandboxes and live preview          |
+| `chapter-08-game-engine`   | three.js game engine                        |
+| `chapter-09-briefing`      | Briefing questions with the ask_player tool |
+| `chapter-10-observability` | Sentry observability                        |
+| `chapter-11-ai-models`     | Model picker                                |
+| `chapter-12-billing`       | Credits and Clerk Billing                   |
+| `chapter-13-bug-fixing`    | Bug fixing                                  |
 
 ```bash
 git checkout chapter-07-sandboxing  # example: jump to Daytona sandboxes
@@ -134,14 +134,14 @@ git checkout chapter-07-sandboxing  # example: jump to Daytona sandboxes
 
 ## Agent Tools
 
-| Tool | Description |
-|------|-------------|
-| `ask_player` | Puts one design question to the player and pauses the turn until they answer |
-| `list_files` | Lists the files in the game directory |
-| `read_file` | Reads a file from the game directory |
-| `write_file` | Creates or fully replaces a file in the game directory |
-| `replace_text` | Replaces an exact snippet of text inside an existing file |
-| `delete_file` | Deletes a file or directory the game no longer uses |
+| Tool           | Description                                                                  |
+| -------------- | ---------------------------------------------------------------------------- |
+| `ask_player`   | Puts one design question to the player and pauses the turn until they answer |
+| `list_files`   | Lists the files in the game directory                                        |
+| `read_file`    | Reads a file from the game directory                                         |
+| `write_file`   | Creates or fully replaces a file in the game directory                       |
+| `replace_text` | Replaces an exact snippet of text inside an existing file                    |
+| `delete_file`  | Deletes a file or directory the game no longer uses                          |
 
 Every path is resolved inside the sandbox's game directory, which is also the directory the preview server serves. The agent cannot touch anything outside it.
 
@@ -256,10 +256,10 @@ Push the repository to GitHub, create a Railway project, and choose **Deploy fro
 
 If automatic detection needs to be overridden, use:
 
-| Setting | Value |
-|---------|-------|
+| Setting       | Value           |
+| ------------- | --------------- |
 | Build command | `npm run build` |
-| Start command | `npm start` |
+| Start command | `npm start`     |
 
 You can also deploy the current directory with the Railway CLI:
 
@@ -386,31 +386,31 @@ trigger.config.ts               # Trigger.dev build and deploy configuration
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start the Next.js development server |
-| `npm run build` | Create a production build |
-| `npm start` | Start the production server |
-| `npm run lint` | Run ESLint |
-| `npm run format` | Format TypeScript and TSX files with Prettier |
-| `npm run typecheck` | Run TypeScript without emitting files |
-| `npm run db:push` | Push the Drizzle schema directly to the database |
-| `npm run db:studio` | Open Drizzle Studio |
-| `npm run trigger:dev` | Start the Trigger.dev development worker |
-| `npm run trigger:deploy` | Deploy tasks to Trigger.dev |
+| Command                  | Description                                      |
+| ------------------------ | ------------------------------------------------ |
+| `npm run dev`            | Start the Next.js development server             |
+| `npm run build`          | Create a production build                        |
+| `npm start`              | Start the production server                      |
+| `npm run lint`           | Run ESLint                                       |
+| `npm run format`         | Format TypeScript and TSX files with Prettier    |
+| `npm run typecheck`      | Run TypeScript without emitting files            |
+| `npm run db:push`        | Push the Drizzle schema directly to the database |
+| `npm run db:studio`      | Open Drizzle Studio                              |
+| `npm run trigger:dev`    | Start the Trigger.dev development worker         |
+| `npm run trigger:deploy` | Deploy tasks to Trigger.dev                      |
 
 <br />
 
 ## Stack
 
-| Technology | Purpose |
-|------------|---------|
-| Next.js 16 and React 19 | Application framework and interface |
-| AI SDK | Streaming chat, tool calling, and the Anthropic model provider |
-| Trigger.dev | Durable chat agent runs, resumable streams, and retries |
-| Daytona | Per-game cloud sandboxes and signed preview URLs |
-| three.js | 3D rendering inside the seeded game engine |
-| Clerk | Authentication, organizations, and subscription billing |
-| Neon and Drizzle | Serverless Postgres and typed database access |
-| Sentry | Frontend, server, edge, and worker monitoring with source maps |
-| shadcn/ui and Tailwind CSS | UI components and styling |
+| Technology                 | Purpose                                                        |
+| -------------------------- | -------------------------------------------------------------- |
+| Next.js 16 and React 19    | Application framework and interface                            |
+| AI SDK                     | Streaming chat, tool calling, and the Anthropic model provider |
+| Trigger.dev                | Durable chat agent runs, resumable streams, and retries        |
+| Daytona                    | Per-game cloud sandboxes and signed preview URLs               |
+| three.js                   | 3D rendering inside the seeded game engine                     |
+| Clerk                      | Authentication, organizations, and subscription billing        |
+| Neon and Drizzle           | Serverless Postgres and typed database access                  |
+| Sentry                     | Frontend, server, edge, and worker monitoring with source maps |
+| shadcn/ui and Tailwind CSS | UI components and styling                                      |
