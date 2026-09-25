@@ -21,7 +21,6 @@
 <br />
 
 <p>
-  <a href="https://www.anthropic.com/"><img src="https://img.shields.io/badge/Claude-D97757?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude" /></a>&nbsp;
   <a href="https://ai-sdk.dev/"><img src="https://img.shields.io/badge/AI_SDK-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="AI SDK" /></a>&nbsp;
   <a href="https://cwa.run/trigger"><img src="https://img.shields.io/badge/Trigger.dev-635BFF?style=for-the-badge" alt="Trigger.dev" /></a>&nbsp;
   <a href="https://www.daytona.io/"><img src="https://img.shields.io/badge/Daytona-0A0A0A?style=for-the-badge" alt="Daytona" /></a>&nbsp;
@@ -35,7 +34,7 @@
 
 <br />
 
-![Sandbox game builder and a generated platformer](./design/hero.png)
+![Sandbox game builder and a generated voxel survival game](./design/hero.png)
 
 <p align="center"><sub>Describe a game in the composer, then play what the agent builds in the live preview.</sub></p>
 
@@ -407,8 +406,7 @@ trigger.config.ts               # Trigger.dev build and deploy configuration
 | Technology | Purpose |
 |------------|---------|
 | Next.js 16 and React 19 | Application framework and interface |
-| AI SDK | Streaming chat, tool calling, and message format |
-| Claude | Game-building models: Opus 5, Sonnet 5, and Haiku 4.5 |
+| AI SDK | Streaming chat, tool calling, and the Anthropic model provider |
 | Trigger.dev | Durable chat agent runs, resumable streams, and retries |
 | Daytona | Per-game cloud sandboxes and signed preview URLs |
 | three.js | 3D rendering inside the seeded game engine |
